@@ -1,0 +1,54 @@
+root = true
+
+[*.{cs,vb}]
+indent_size = 4
+indent_style = space
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# VSTHRD200: Use async naming convention
+dotnet_diagnostic.VSTHRD200.severity = error
+
+# CA1068: CancellationToken parameter must come last
+dotnet_diagnostic.CA1068.severity = error
+
+# Code style rules
+csharp_style_pattern_matching_over_is_with_cast_check = true:error
+csharp_style_inlined_variable_declaration = true:error
+csharp_style_throw_expression = true:error
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_space_after_cast = false
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_between_method_call_parameter_list_parentheses = false
+csharp_space_between_method_declaration_parameter_list_parentheses = false
+csharp_space_between_parentheses = false
+csharp_space_before_colon_in_inheritance_clause = true
+csharp_space_before_comma = false
+csharp_space_before_dot = false
+csharp_space_before_semicolon_in_for_statement = false
+csharp_space_around_binary_operators = before_and_after
+csharp_space_around_declaration_statements = false
+csharp_space_before_open_square_brackets = false
+csharp_space_between_empty_square_brackets = false
+csharp_space_between_square_brackets = false
+
+# Naming conventions
+dotnet_naming_style.pascal_case_style.required_prefix = 
+dotnet_naming_style.pascal_case_style.required_suffix = 
+dotnet_naming_style.pascal_case_style.word_separator = 
+dotnet_naming_style.pascal_case_style.capitalization = pascal_case
+
+dotnet_naming_style.interface_style.capitalization = pascal_case
+dotnet_naming_style.interface_style.required_prefix = I
+dotnet_naming_style.interface_style.word_separator = 
+
+dotnet_naming_rule.interfaces_should_be_begins_with_i.severity = error
+dotnet_naming_rule.interfaces_should_be_begins_with_i.symbols = interface_symbols
+dotnet_naming_rule.interfaces_should_be_begins_with_i.style = interface_style
+dotnet_naming_symbols.interface_symbols.applicable_kinds = interface
+dotnet_naming_symbols.interface_symbols.applicable_accessibilities = public,internal,private,protected,protected_internal,private_protected
+dotnet_naming_symbols.interface_symbols.required_modifiers = 
+
+# IDE0055: Code block preferences
+csharp_prefer_braces = true:error

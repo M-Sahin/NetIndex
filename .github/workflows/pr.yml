@@ -1,0 +1,39 @@
+name: PR Gate - Unit + Contracts
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+          
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=true
+
+      - name: Run Unit Tests
+        run: dotnet test --no-build --configuration Release --logger trx --results-directory results --filter "Category!=ArchContract&Category!=SecurityContract&Category!=PipelineContract&Category!=ContractTest&Category!=Integration&Category!=Evaluation&Category!=Benchmark"
+
+      - name: Run Architecture Contract Tests
+        run: dotnet test --no-build --configuration Release --logger trx --results-directory results --filter "Category=ArchContract"
+
+      - name: Run Security Contract Tests
+        run: dotnet test --no-build --configuration Release --logger trx --results-directory results --filter "Category=SecurityContract"
+
+      - name: Run Pipeline Contract Tests
+        run: dotnet test --no-build --configuration Release --logger trx --results-directory results --filter "Category=PipelineContract"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: results/

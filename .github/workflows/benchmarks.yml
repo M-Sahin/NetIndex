@@ -1,0 +1,48 @@
+name: Benchmarks - Manual Performance Profiling
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'Benchmark scenario to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - embedding-generation
+          - vector-search
+          - document-ingestion
+          - pipeline-e2e
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build benchmarks
+        run: dotnet build benchmarks/NetIndex.Benchmarks/NetIndex.Benchmarks.csproj -c Release
+
+      - name: Run benchmarks
+        run: |
+          dotnet run -c Release --project benchmarks/NetIndex.Benchmarks/NetIndex.Benchmarks.csproj -- \
+            --filter '*${{ github.event.inputs.scenario }}*' \
+            --exporters json
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_number }}
+          path: BenchmarkDotNet.Artifacts/
+
+      - name: Comment on workflow
+        if: always()
+        run: |
+          echo "Benchmark run complete. Results available in artifacts."

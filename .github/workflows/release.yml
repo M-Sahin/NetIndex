@@ -1,0 +1,76 @@
+name: Release - Sign & Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=true
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Run pre-release tests
+        run: dotnet test --no-build --configuration Release --filter "Category!=Benchmark"
+
+      - name: Create NuGet packages
+        run: |
+          dotnet pack src/Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+          dotnet pack src/Core/NetIndex.Core/NetIndex.Core.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+          dotnet pack src/AspNetCore/NetIndex.AspNetCore/NetIndex.AspNetCore.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+          # Pack all provider packages
+          dotnet pack src/Providers/NetIndex.Providers.Ollama/NetIndex.Providers.Ollama.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+          dotnet pack src/Providers/NetIndex.Providers.OpenAI/NetIndex.Providers.OpenAI.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+          dotnet pack src/Providers/NetIndex.Providers.AzureOpenAI/NetIndex.Providers.AzureOpenAI.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+          # Pack all storage packages
+          dotnet pack src/Storage/NetIndex.Storage.InMemory/NetIndex.Storage.InMemory.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+          dotnet pack src/Storage/NetIndex.Storage.Sqlite/NetIndex.Storage.Sqlite.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+          dotnet pack src/Storage/NetIndex.Storage.Pgvector/NetIndex.Storage.Pgvector.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+          # Pack all ingestion packages
+          dotnet pack src/Ingestion/NetIndex.Ingestion.Pdf/NetIndex.Ingestion.Pdf.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+          dotnet pack src/Ingestion/NetIndex.Ingestion.Docx/NetIndex.Ingestion.Docx.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+          dotnet pack src/Ingestion/NetIndex.Ingestion.Tesseract/NetIndex.Ingestion.Tesseract.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+
+      - name: Publish to NuGet (when ready)
+        # Requires NuGet API key in secrets.NUGET_API_KEY
+        if: false # Disabled until ready for real releases
+        run: |
+          dotnet nuget push nupkg/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ steps.version.outputs.VERSION }}
+          body: |
+            Release ${{ steps.version.outputs.VERSION }}
+            
+            See CHANGELOG.md for changes in this release.
+          draft: false
+          prerelease: false
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: nupkg/

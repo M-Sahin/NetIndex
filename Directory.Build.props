@@ -1,0 +1,31 @@
+<Project>
+  <!-- Shared build properties for all projects -->
+  
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+  </PropertyGroup>
+
+  <!-- Package metadata -->
+  <PropertyGroup>
+    <PackageProjectUrl>https://github.com/murat/rag-pipeline-net</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/murat/rag-pipeline-net</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <Authors>Murat</Authors>
+    <Version>0.9.0</Version>
+    <Description>NetIndex - LlamaIndex for .NET, enterprise-first RAG framework</Description>
+  </PropertyGroup>
+
+  <!-- Shared analyzer configuration -->
+  <ItemGroup>
+    <EditorConfigFiles Include="$(MSBuildThisFileDirectory).editorconfig" />
+  </ItemGroup>
+</Project>

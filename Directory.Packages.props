@@ -1,0 +1,31 @@
+<Project>
+  <!-- Central Package Management -->
+  
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Microsoft.Extensions -->
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="0.1.0-preview.1" />
+    <PackageVersion Include="Microsoft.Extensions.VectorData" Version="0.1.0-preview.1" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+
+    <!-- Testing -->
+    <PackageVersion Include="xunit" Version="2.7.0" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.5.4" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.1" />
+    <PackageVersion Include="NSubstitute" Version="4.4.0" />
+    <PackageVersion Include="FluentAssertions" Version="6.12.0" />
+
+    <!-- Diagnostics & Analysis -->
+    <PackageVersion Include="System.Diagnostics.DiagnosticSource" Version="9.0.0" />
+
+    <!-- OllamaSharp for Ollama provider -->
+    <PackageVersion Include="OllamaSharp" Version="4.14.0" />
+  </ItemGroup>
+</Project>

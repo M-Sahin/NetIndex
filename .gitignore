@@ -1,0 +1,36 @@
+## .NET / SDK
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.nupkg
+*.snupkg
+
+## VS / Rider
+.vs/
+.idea/
+*.sln.docstates
+
+## OS
+.DS_Store
+Thumbs.db
+
+## Docs / help
+*.chm
+*.cache
+DocfxArtifacts
+
+## Test results
+TestResults/*.cache
+
+## node_modules (tooling only)
+node_modules/
+
+## BMad output
+_bmad-output/
+_bmad
+
+## Agents
+.agents/
+.claude/

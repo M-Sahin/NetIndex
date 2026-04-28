@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj" />
+    <ProjectReference Include="../../Core/NetIndex.Core/NetIndex.Core.csproj" />
+  </ItemGroup>
+</Project>
