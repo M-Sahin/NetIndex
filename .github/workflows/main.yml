@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: netindex_test
@@ -26,10 +26,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
-
-      - name: Install pgvector extension
-        run: |
-          PGPASSWORD=postgres psql -h localhost -U postgres -d netindex_test -c "CREATE EXTENSION vector;"
 
       - name: Restore dependencies
         run: dotnet restore
