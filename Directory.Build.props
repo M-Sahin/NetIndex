@@ -24,8 +24,4 @@
     <Description>NetIndex - LlamaIndex for .NET, enterprise-first RAG framework</Description>
   </PropertyGroup>
 
-  <!-- Shared analyzer configuration -->
-  <ItemGroup>
-    <EditorConfigFiles Include="$(MSBuildThisFileDirectory).editorconfig" />
-  </ItemGroup>
 </Project>
