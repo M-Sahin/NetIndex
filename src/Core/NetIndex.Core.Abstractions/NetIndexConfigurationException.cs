@@ -64,4 +64,20 @@ public class NetIndexConfigurationException : NetIndexException
         ExpectedValue = expectedValue;
         ActualValue = actualValue;
     }
+
+    /// <summary>
+    /// Initializes a new instance with structured configuration data and an inner exception.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    /// <param name="propertyName">The configuration property that failed validation.</param>
+    /// <param name="expectedValue">The expected value.</param>
+    /// <param name="actualValue">The actual value provided.</param>
+    /// <param name="innerException">The inner exception that caused this error.</param>
+    public NetIndexConfigurationException(string? message, string? propertyName, object? expectedValue, object? actualValue, Exception? innerException)
+        : base(message, innerException)
+    {
+        PropertyName = propertyName;
+        ExpectedValue = expectedValue;
+        ActualValue = actualValue;
+    }
 }

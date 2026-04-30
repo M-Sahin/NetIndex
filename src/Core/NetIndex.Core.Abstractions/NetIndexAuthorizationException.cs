@@ -58,4 +58,20 @@ public class NetIndexAuthorizationException : NetIndexException
         RequiredClaim = requiredClaim;
         FailureReason = failureReason;
     }
+
+    /// <summary>
+    /// Initializes a new instance with structured authorization data and an inner exception.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    /// <param name="tenantId">The attempted tenant ID, if available.</param>
+    /// <param name="requiredClaim">The missing or invalid claim.</param>
+    /// <param name="failureReason">The reason for the authorization failure.</param>
+    /// <param name="innerException">The inner exception that caused this error.</param>
+    public NetIndexAuthorizationException(string? message, string? tenantId, string? requiredClaim, string? failureReason, Exception? innerException)
+        : base(message, innerException)
+    {
+        TenantId = tenantId;
+        RequiredClaim = requiredClaim;
+        FailureReason = failureReason;
+    }
 }

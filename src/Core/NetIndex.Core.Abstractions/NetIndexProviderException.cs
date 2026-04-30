@@ -83,4 +83,28 @@ public class NetIndexProviderException : NetIndexException
         ErrorCode = errorCode;
         HttpStatusCode = httpStatusCode;
     }
+
+    /// <summary>
+    /// Initializes a new instance with structured provider error data and an inner exception.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    /// <param name="isRetryable">Whether the operation can be retried.</param>
+    /// <param name="providerName">The name of the provider.</param>
+    /// <param name="errorCode">The provider error code.</param>
+    /// <param name="httpStatusCode">The HTTP status code, if applicable.</param>
+    /// <param name="innerException">The inner exception that caused this error.</param>
+    public NetIndexProviderException(
+        string? message,
+        bool isRetryable,
+        string? providerName,
+        string? errorCode,
+        int? httpStatusCode,
+        Exception? innerException)
+        : base(message, innerException)
+    {
+        IsRetryable = isRetryable;
+        ProviderName = providerName;
+        ErrorCode = errorCode;
+        HttpStatusCode = httpStatusCode;
+    }
 }

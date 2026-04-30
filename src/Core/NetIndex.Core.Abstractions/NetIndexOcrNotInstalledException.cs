@@ -53,4 +53,18 @@ public class NetIndexOcrNotInstalledException : NetIndexException
         RequiredPackage = requiredPackage;
         InstallInstructions = installInstructions;
     }
+
+    /// <summary>
+    /// Initializes a new instance with structured installation data and an inner exception.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    /// <param name="requiredPackage">The name of the required package.</param>
+    /// <param name="installInstructions">Instructions for installing the dependency.</param>
+    /// <param name="innerException">The inner exception that caused this error.</param>
+    public NetIndexOcrNotInstalledException(string? message, string? requiredPackage, string? installInstructions, Exception? innerException)
+        : base(message, innerException)
+    {
+        RequiredPackage = requiredPackage;
+        InstallInstructions = installInstructions;
+    }
 }

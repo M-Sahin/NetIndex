@@ -59,4 +59,20 @@ public class NetIndexStorageException : NetIndexException
         Operation = operation;
         DocumentId = documentId;
     }
+
+    /// <summary>
+    /// Initializes a new instance with structured storage error data and an inner exception.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    /// <param name="storeName">The name of the vector store.</param>
+    /// <param name="operation">The operation being performed.</param>
+    /// <param name="documentId">The document ID involved, if applicable.</param>
+    /// <param name="innerException">The inner exception that caused this error.</param>
+    public NetIndexStorageException(string? message, string? storeName, string? operation, string? documentId, Exception? innerException)
+        : base(message, innerException)
+    {
+        StoreName = storeName;
+        Operation = operation;
+        DocumentId = documentId;
+    }
 }
