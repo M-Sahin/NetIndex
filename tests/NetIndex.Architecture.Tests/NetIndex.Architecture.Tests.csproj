@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <IsTestProject>true</IsTestProject>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="NetArchTest.Rules" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj" />
+    <ProjectReference Include="../../src/Core/NetIndex.Core/NetIndex.Core.csproj" />
+    <ProjectReference Include="../../src/AspNetCore/NetIndex.AspNetCore/NetIndex.AspNetCore.csproj" />
+    <ProjectReference Include="../../src/Providers/NetIndex.Providers.Ollama/NetIndex.Providers.Ollama.csproj" />
+    <ProjectReference Include="../../src/Providers/NetIndex.Providers.OpenAI/NetIndex.Providers.OpenAI.csproj" />
+    <ProjectReference Include="../../src/Providers/NetIndex.Providers.AzureOpenAI/NetIndex.Providers.AzureOpenAI.csproj" />
+    <ProjectReference Include="../../src/Storage/NetIndex.Storage.InMemory/NetIndex.Storage.InMemory.csproj" />
+    <ProjectReference Include="../../src/Storage/NetIndex.Storage.Sqlite/NetIndex.Storage.Sqlite.csproj" />
+    <ProjectReference Include="../../src/Storage/NetIndex.Storage.Pgvector/NetIndex.Storage.Pgvector.csproj" />
+    <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Pdf/NetIndex.Ingestion.Pdf.csproj" />
+    <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Docx/NetIndex.Ingestion.Docx.csproj" />
+    <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Tesseract/NetIndex.Ingestion.Tesseract.csproj" />
+  </ItemGroup>
+</Project>

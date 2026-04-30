@@ -60,6 +60,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Core", "Core", "{B234C483-8
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetIndex", "src\Core\NetIndex\NetIndex.csproj", "{D65EF9C1-D2A5-4C5C-9845-7518CB895B80}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{75EA80A9-6463-4FB8-9ADC-01F43C2902FD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetIndex.Architecture.Tests", "tests\NetIndex.Architecture.Tests\NetIndex.Architecture.Tests.csproj", "{54EE723C-A464-4AA3-8E59-52E654D192A3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -174,9 +178,14 @@ Global
 		{D65EF9C1-D2A5-4C5C-9845-7518CB895B80}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D65EF9C1-D2A5-4C5C-9845-7518CB895B80}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D65EF9C1-D2A5-4C5C-9845-7518CB895B80}.Release|Any CPU.Build.0 = Release|Any CPU
+		{54EE723C-A464-4AA3-8E59-52E654D192A3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{54EE723C-A464-4AA3-8E59-52E654D192A3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{54EE723C-A464-4AA3-8E59-52E654D192A3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{54EE723C-A464-4AA3-8E59-52E654D192A3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{B234C483-821A-4A57-BAB2-6EF6FADDF6A8} = {5EACFE3A-A356-4467-8C1C-0B49E87BB639}
 		{D65EF9C1-D2A5-4C5C-9845-7518CB895B80} = {B234C483-821A-4A57-BAB2-6EF6FADDF6A8}
+		{54EE723C-A464-4AA3-8E59-52E654D192A3} = {75EA80A9-6463-4FB8-9ADC-01F43C2902FD}
 	EndGlobalSection
 EndGlobal
