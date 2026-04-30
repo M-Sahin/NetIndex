@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>NetIndex</PackageId>
+    <Title>NetIndex Prefix Reservation</Title>
+    <Description>Placeholder package used to reserve the NetIndex.* package prefix on NuGet.org.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="_._" Pack="true" PackagePath="lib/net9.0/" Visible="false" />
+  </ItemGroup>
+</Project>

@@ -9,8 +9,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +32,7 @@ jobs:
 
       - name: Create NuGet packages
         run: |
+          set -e
           dotnet pack src/Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
           dotnet pack src/Core/NetIndex.Core/NetIndex.Core.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
           dotnet pack src/AspNetCore/NetIndex.AspNetCore/NetIndex.AspNetCore.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
@@ -49,6 +49,10 @@ jobs:
           dotnet pack src/Ingestion/NetIndex.Ingestion.Docx/NetIndex.Ingestion.Docx.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
           dotnet pack src/Ingestion/NetIndex.Ingestion.Tesseract/NetIndex.Ingestion.Tesseract.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
 
+      # TODO: Add package signing step when signing certificate is available
+      # Reference: NFR2 - Packages must be signed with NuGet signing certificate
+      # Example: dotnet msbuild -t:Sign -p:SigningCertificate=${{ secrets.NUSPEC_SIGNING_CERTIFICATE }} -p:SigningPassword=${{ secrets.NUSPEC_SIGNING_PASSWORD }} nupkg/*.nupkg
+
       - name: Publish to NuGet (when ready)
         # Requires NuGet API key in secrets.NUGET_API_KEY
         if: false # Disabled until ready for real releases
@@ -56,21 +60,21 @@ jobs:
           dotnet nuget push nupkg/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json
 
       - name: Create GitHub Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ steps.version.outputs.VERSION }}
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ steps.version.outputs.VERSION }}
           body: |
             Release ${{ steps.version.outputs.VERSION }}
-            
+
             See CHANGELOG.md for changes in this release.
           draft: false
           prerelease: false
+          files: nupkg/*.nupkg
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: nupkg
           path: nupkg/

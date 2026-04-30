@@ -24,4 +24,11 @@
     <Description>NetIndex - LlamaIndex for .NET, enterprise-first RAG framework</Description>
   </PropertyGroup>
 
+  <!-- xunit.runner.json for all test projects -->
+  <ItemGroup Condition="'$(IsTestProject)' == 'true'">
+    <Content Include="..\..\xunit.runner.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
