@@ -48,6 +48,19 @@ public sealed class NetIndexBuilder : INetIndexBuilder
             }))
             {
                 _ = validationProvider.GetRequiredService<IOptions<NetIndexOptions>>().Value;
+
+                // Validate dimension consistency between embedding generator and vector store (FR11).
+                var embeddingGenerator = validationProvider.GetRequiredService<IEmbeddingGenerator>();
+                var vectorStore = validationProvider.GetRequiredService<IVectorStore>();
+
+                if (embeddingGenerator.Dimensions != vectorStore.Dimensions)
+                {
+                    throw new NetIndexConfigurationException(
+                        $"Embedding dimension mismatch: configured store expects {vectorStore.Dimensions}, provider returns {embeddingGenerator.Dimensions}. Full re-index required when switching embedding providers.",
+                        "Dimensions",
+                        vectorStore.Dimensions,
+                        embeddingGenerator.Dimensions);
+                }
             }
         }
         catch (OptionsValidationException exception)
