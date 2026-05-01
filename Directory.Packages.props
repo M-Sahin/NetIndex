@@ -10,6 +10,7 @@
     <PackageVersion Include="Microsoft.Extensions.AI" Version="0.1.0-preview.1" />
     <PackageVersion Include="Microsoft.Extensions.VectorData" Version="0.1.0-preview.1" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.0" />

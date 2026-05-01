@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Threading;
 
 namespace NetIndex.Core.Abstractions;
@@ -22,6 +23,16 @@ namespace NetIndex.Core.Abstractions;
 /// </remarks>
 public interface INetIndexBuilder
 {
+    /// <summary>
+    /// Gets the service collection being configured by the builder.
+    /// </summary>
+    /// <remarks>
+    /// Feature packages use this hook to register their own services from
+    /// <c>Use{Feature}(...)</c> extension methods without depending on the
+    /// concrete <c>NetIndexBuilder</c> implementation.
+    /// </remarks>
+    IServiceCollection Services { get; }
+
     /// <summary>
     /// Finalizes configuration and returns the composed pipeline orchestrator.
     /// </summary>
