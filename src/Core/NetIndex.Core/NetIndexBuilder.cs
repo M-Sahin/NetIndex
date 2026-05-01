@@ -27,20 +27,28 @@ public sealed class NetIndexBuilder : INetIndexBuilder
     public IServiceCollection Services => _services;
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Validates the service collection (ValidateOnBuild + ValidateScopes) using a temporary
+    /// provider that is disposed immediately. <c>NetIndexPipeline</c> is registered as a
+    /// singleton and will be resolved by the host's <c>IServiceProvider</c> at runtime.
+    /// Returns <c>this</c> to support fluent chaining; callers resolve the pipeline from DI.
+    /// </remarks>
     public object Build()
     {
         RegisterDefaults();
 
         try
         {
-            using var provider = _services.BuildServiceProvider(new ServiceProviderOptions
+            // Temporary provider for validation only — disposed after validation passes.
+            // The host's IServiceProvider resolves NetIndexPipeline at runtime.
+            using (var validationProvider = _services.BuildServiceProvider(new ServiceProviderOptions
             {
                 ValidateOnBuild = true,
                 ValidateScopes = true,
-            });
-
-            _ = provider.GetRequiredService<IOptions<NetIndexOptions>>().Value;
-            return provider.GetRequiredService<NetIndexPipeline>();
+            }))
+            {
+                _ = validationProvider.GetRequiredService<IOptions<NetIndexOptions>>().Value;
+            }
         }
         catch (OptionsValidationException exception)
         {
@@ -51,6 +59,8 @@ public sealed class NetIndexBuilder : INetIndexBuilder
                 string.Join("; ", exception.Failures),
                 exception);
         }
+
+        return this;
     }
 
     private void RegisterDefaults()

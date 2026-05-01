@@ -28,9 +28,22 @@ public sealed class NetIndexPipeline
     {
         try
         {
-            return await _tenantResolver.ResolveTenantIdAsync(cancellationToken);
+            var tenantId = await _tenantResolver.ResolveTenantIdAsync(cancellationToken);
+
+            if (tenantId is null)
+            {
+                throw new NetIndexAuthorizationException(
+                    "Tenant resolver returned null. Authorization denied.",
+                    null, null, "NullTenantId");
+            }
+
+            return tenantId;
         }
         catch (NetIndexAuthorizationException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             throw;
         }

@@ -21,9 +21,10 @@ public sealed class DenyAllAuthorizationTests
     {
         var services = new ServiceCollection();
         var builder = services.AddNetIndex();
-        var pipeline = (NetIndexPipeline)builder.Build();
+        builder.Build();
 
         using var provider = services.BuildServiceProvider();
+        var pipeline = provider.GetRequiredService<NetIndexPipeline>();
 
         var exception = await Assert.ThrowsAsync<NetIndexAuthorizationException>(
             () => pipeline.AuthorizeAsync());
@@ -46,9 +47,10 @@ public sealed class DenyAllAuthorizationTests
         services.AddSingleton<ITenantResolver>(fakeResolver);
 
         var builder = services.AddNetIndex();
-        var pipeline = (NetIndexPipeline)builder.Build();
+        builder.Build();
 
         using var provider = services.BuildServiceProvider();
+        var pipeline = provider.GetRequiredService<NetIndexPipeline>();
 
         var tenantId = await pipeline.AuthorizeAsync();
 
@@ -67,9 +69,10 @@ public sealed class DenyAllAuthorizationTests
         services.AddSingleton<ITenantResolver>(fakeResolver);
 
         var builder = services.AddNetIndex();
-        var pipeline = (NetIndexPipeline)builder.Build();
+        builder.Build();
 
         using var provider = services.BuildServiceProvider();
+        var pipeline = provider.GetRequiredService<NetIndexPipeline>();
         var cts = new CancellationTokenSource();
 
         _ = await pipeline.AuthorizeAsync(cts.Token);
