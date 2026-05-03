@@ -82,6 +82,20 @@ public sealed class NetIndexBuilder : INetIndexBuilder
         _services.TryAddSingleton<IVectorStore, InMemoryVectorStore>();
         _services.TryAddSingleton<IEmbeddingGenerator, InMemoryEmbeddingGenerator>();
         _services.TryAddSingleton<IChatClient, InMemoryChatClient>();
-        _services.TryAddSingleton<NetIndexPipeline>();
+        _services.TryAddSingleton<IChunkingStrategy, PassThroughChunkingStrategy>();
+        _services.TryAddSingleton<INetIndexPipeline>(sp =>
+        {
+            var tenantResolver = sp.GetRequiredService<ITenantResolver>();
+            var chunkingStrategy = sp.GetService<IChunkingStrategy>();
+            var embeddingGenerator = sp.GetRequiredService<IEmbeddingGenerator>();
+            var vectorStore = sp.GetRequiredService<IVectorStore>();
+            var chatClient = sp.GetRequiredService<IChatClient>();
+            var reranker = sp.GetService<IDocumentReranker>();
+
+            return new NetIndexPipeline(
+                tenantResolver, chunkingStrategy, embeddingGenerator, vectorStore, chatClient, reranker);
+        });
+        _services.TryAddSingleton<NetIndexPipeline>(sp =>
+            (NetIndexPipeline)sp.GetRequiredService<INetIndexPipeline>());
     }
 }

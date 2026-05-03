@@ -14,20 +14,24 @@ namespace NetIndex.Core.Tests;
 public sealed class DenyAllAuthorizationTests
 {
     /// <summary>
-    /// Verifies that AuthorizeAsync throws NetIndexAuthorizationException when DenyAllTenantResolver is the default.
+    /// Verifies that IngestAsync throws NetIndexAuthorizationException when DenyAllTenantResolver is the default.
     /// </summary>
     [Fact]
-    public async Task AuthorizeAsync_WithDenyAllResolver_ThrowsAuthorizationExceptionAsync()
+    public async Task IngestAsync_WithDenyAllResolver_ThrowsAuthorizationExceptionAsync()
     {
         var services = new ServiceCollection();
         var builder = services.AddNetIndex();
         builder.Build();
 
         using var provider = services.BuildServiceProvider();
-        var pipeline = provider.GetRequiredService<NetIndexPipeline>();
+        var pipeline = provider.GetRequiredService<INetIndexPipeline>();
+
+        var document = Substitute.For<IDocument>();
+        document.Id.Returns("doc-1");
+        document.Content.Returns("test");
 
         var exception = await Assert.ThrowsAsync<NetIndexAuthorizationException>(
-            () => pipeline.AuthorizeAsync());
+            () => pipeline.IngestAsync(document));
 
         Assert.Equal("No ITenantResolver configured. Access denied by default.", exception.Message);
         Assert.Null(exception.TenantId);
@@ -36,32 +40,33 @@ public sealed class DenyAllAuthorizationTests
     }
 
     /// <summary>
-    /// Verifies that AuthorizeAsync succeeds when a custom ITenantResolver is registered.
+    /// Verifies that QueryAsync throws NetIndexAuthorizationException when a custom resolver that returns null is registered.
     /// </summary>
     [Fact]
-    public async Task AuthorizeAsync_WithCustomResolver_SucceedsAsync()
+    public async Task QueryAsync_WithNullResolver_ThrowsAuthorizationExceptionAsync()
     {
         var services = new ServiceCollection();
         var fakeResolver = Substitute.For<ITenantResolver>();
-        fakeResolver.ResolveTenantIdAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult("test-tenant-123"));
+#pragma warning disable CS8604
+        fakeResolver.ResolveTenantIdAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult((string)null!));
+#pragma warning restore CS8604
         services.AddSingleton<ITenantResolver>(fakeResolver);
 
         var builder = services.AddNetIndex();
         builder.Build();
 
         using var provider = services.BuildServiceProvider();
-        var pipeline = provider.GetRequiredService<NetIndexPipeline>();
+        var pipeline = provider.GetRequiredService<INetIndexPipeline>();
 
-        var tenantId = await pipeline.AuthorizeAsync();
-
-        Assert.Equal("test-tenant-123", tenantId);
+        await Assert.ThrowsAsync<NetIndexAuthorizationException>(
+            async () => { await foreach (var _ in pipeline.QueryAsync("test")) { } });
     }
 
     /// <summary>
     /// Verifies that CancellationToken is propagated to the tenant resolver.
     /// </summary>
     [Fact]
-    public async Task AuthorizeAsync_CancellationPropagatedAsync()
+    public async Task GenerateAsync_CancellationPropagatedAsync()
     {
         var services = new ServiceCollection();
         var fakeResolver = Substitute.For<ITenantResolver>();
@@ -72,10 +77,10 @@ public sealed class DenyAllAuthorizationTests
         builder.Build();
 
         using var provider = services.BuildServiceProvider();
-        var pipeline = provider.GetRequiredService<NetIndexPipeline>();
+        var pipeline = provider.GetRequiredService<INetIndexPipeline>();
         var cts = new CancellationTokenSource();
 
-        _ = await pipeline.AuthorizeAsync(cts.Token);
+        await foreach (var _ in pipeline.GenerateAsync("test", cts.Token)) { }
 
         await fakeResolver.Received(1).ResolveTenantIdAsync(Arg.Is<CancellationToken>(c => c == cts.Token));
     }
