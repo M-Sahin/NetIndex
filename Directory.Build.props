@@ -15,12 +15,12 @@
 
   <!-- Package metadata -->
   <PropertyGroup>
-    <PackageProjectUrl>https://github.com/murat/rag-pipeline-net</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/M-Sahin/NetIndex</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/murat/rag-pipeline-net</RepositoryUrl>
+    <RepositoryUrl>https://github.com/M-Sahin/NetIndex</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <Authors>Murat</Authors>
-    <Version>0.9.0</Version>
+    <Version>0.9.1</Version>
     <Description>NetIndex - LlamaIndex for .NET, enterprise-first RAG framework</Description>
   </PropertyGroup>
 

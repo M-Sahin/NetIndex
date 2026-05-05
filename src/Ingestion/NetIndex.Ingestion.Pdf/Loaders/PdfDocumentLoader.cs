@@ -43,7 +43,10 @@ public sealed class PdfDocumentLoader : IDocumentLoader<PdfFormat>
     /// indicating a scanned PDF that requires OCR.
     /// </exception>
     public Task<IDocument> LoadAsync(Stream stream, CancellationToken cancellationToken = default)
-        => LoadCoreAsync(stream, sourceUri: null, extraMetadata: null, cancellationToken);
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        return LoadCoreAsync(stream, sourceUri: null, extraMetadata: null, cancellationToken);
+    }
 
     /// <summary>
     /// Loads a document from the given file path.
@@ -75,9 +78,9 @@ public sealed class PdfDocumentLoader : IDocumentLoader<PdfFormat>
     {
         using var ms = new MemoryStream();
         await stream.CopyToAsync(ms, cancellationToken).ConfigureAwait(false);
-        var bytes = ms.ToArray();
+        ms.Position = 0;
 
-        using var pdfDoc = PdfPigDocument.Open(bytes);
+        using var pdfDoc = PdfPigDocument.Open(ms);
         var pageCount = pdfDoc.NumberOfPages;
         var info = pdfDoc.Information;
 

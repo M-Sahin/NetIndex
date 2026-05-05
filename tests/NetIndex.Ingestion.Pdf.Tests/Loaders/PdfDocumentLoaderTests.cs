@@ -54,6 +54,19 @@ public sealed class PdfDocumentLoaderTests
     }
 
     /// <summary>
+    /// Verifies that passing a null stream throws <see cref="ArgumentNullException"/>.
+    /// </summary>
+    [Fact]
+    public Task LoadAsync_NullStream_ThrowsArgumentNullExceptionAsync()
+    {
+        var loader = CreateLoader();
+
+        var act = () => loader.LoadAsync((Stream)null!);
+
+        return act.Should().ThrowAsync<ArgumentNullException>();
+    }
+
+    /// <summary>
     /// Verifies that the page_count metadata key is present and parseable.
     /// </summary>
     [Fact]
