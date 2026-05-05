@@ -33,6 +33,9 @@
     <!-- OllamaSharp for Ollama provider -->
     <PackageVersion Include="OllamaSharp" Version="4.14.0" />
 
+    <!-- PDF ingestion -->
+    <PackageVersion Include="PdfPig" Version="0.1.14" />
+
     <!-- Benchmarking -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.13.12" />
   </ItemGroup>

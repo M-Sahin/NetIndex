@@ -13,6 +13,7 @@ namespace NetIndex.Core;
 public sealed class NetIndexBuilder : INetIndexBuilder
 {
     private readonly IServiceCollection _services;
+    private bool _built;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NetIndexBuilder"/> class.
@@ -35,6 +36,13 @@ public sealed class NetIndexBuilder : INetIndexBuilder
     /// </remarks>
     public object Build()
     {
+        if (_built)
+        {
+            throw new InvalidOperationException(
+                "Build() has already been called on this builder. Create a new builder instance to reconfigure.");
+        }
+
+        _built = true;
         RegisterDefaults();
 
         try
@@ -53,6 +61,24 @@ public sealed class NetIndexBuilder : INetIndexBuilder
                 var embeddingGenerator = validationProvider.GetRequiredService<IEmbeddingGenerator>();
                 var vectorStore = validationProvider.GetRequiredService<IVectorStore>();
 
+                if (embeddingGenerator.Dimensions <= 0)
+                {
+                    throw new NetIndexConfigurationException(
+                        $"Embedding provider reports {embeddingGenerator.Dimensions} dimensions. Dimensions must be greater than zero.",
+                        "Dimensions",
+                        "> 0",
+                        embeddingGenerator.Dimensions);
+                }
+
+                if (vectorStore.Dimensions <= 0)
+                {
+                    throw new NetIndexConfigurationException(
+                        $"Vector store reports {vectorStore.Dimensions} dimensions. Dimensions must be greater than zero.",
+                        "Dimensions",
+                        "> 0",
+                        vectorStore.Dimensions);
+                }
+
                 if (embeddingGenerator.Dimensions != vectorStore.Dimensions)
                 {
                     throw new NetIndexConfigurationException(
@@ -63,6 +89,10 @@ public sealed class NetIndexBuilder : INetIndexBuilder
                 }
             }
         }
+        catch (NetIndexConfigurationException)
+        {
+            throw;
+        }
         catch (OptionsValidationException exception)
         {
             throw new NetIndexConfigurationException(
@@ -70,6 +100,15 @@ public sealed class NetIndexBuilder : INetIndexBuilder
                 nameof(NetIndexOptions),
                 "Valid NetIndexOptions",
                 string.Join("; ", exception.Failures),
+                exception);
+        }
+        catch (Exception exception)
+        {
+            throw new NetIndexConfigurationException(
+                "NetIndex service registration is invalid. Check for missing services or circular dependencies.",
+                nameof(IServiceCollection),
+                "Valid service registrations",
+                exception.Message,
                 exception);
         }
 

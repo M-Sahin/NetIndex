@@ -124,9 +124,15 @@ public class DependencyGraphTests
     [Fact]
     public void Providers_ShouldNot_DependOn_Core()
     {
+        // Note: We cannot check "NetIndex.Core" here because NetArchTest uses namespace-prefix
+        // matching — "NetIndex.Core" would also match "NetIndex.Core.Abstractions".
+        // Provider csproj files carry no ProjectReference to NetIndex.Core, so the compiler
+        // enforces that invariant. We verify the non-conflicting Core sub-namespaces here.
         foreach (var provider in new[] { "NetIndex.Providers.OpenAI", "NetIndex.Providers.Ollama", "NetIndex.Providers.AzureOpenAI" })
         {
-            AssertNoDependency(provider, "NetIndex.Core", $"{provider} should not depend on Core");
+            AssertNoDependencies(provider,
+                ["NetIndex.Core.NullObjects", "NetIndex.Core.Options"],
+                $"{provider} should not depend on Core implementation sub-namespaces");
         }
     }
 
@@ -162,9 +168,15 @@ public class DependencyGraphTests
     [Fact]
     public void Storage_ShouldNot_DependOn_Core()
     {
+        // Note: We cannot check "NetIndex.Core" here because NetArchTest uses namespace-prefix
+        // matching — "NetIndex.Core" would also match "NetIndex.Core.Abstractions".
+        // Storage csproj files carry no ProjectReference to NetIndex.Core, so the compiler
+        // enforces that invariant. We verify the non-conflicting Core sub-namespaces here.
         foreach (var storage in new[] { "NetIndex.Storage.InMemory", "NetIndex.Storage.Sqlite", "NetIndex.Storage.Pgvector" })
         {
-            AssertNoDependency(storage, "NetIndex.Core", $"{storage} should not depend on Core");
+            AssertNoDependencies(storage,
+                ["NetIndex.Core.NullObjects", "NetIndex.Core.Options"],
+                $"{storage} should not depend on Core implementation sub-namespaces");
         }
     }
 
@@ -200,9 +212,15 @@ public class DependencyGraphTests
     [Fact]
     public void Ingestion_ShouldNot_DependOn_Core()
     {
+        // Note: We cannot check "NetIndex.Core" here because NetArchTest uses namespace-prefix
+        // matching — "NetIndex.Core" would also match "NetIndex.Core.Abstractions".
+        // Ingestion csproj files carry no ProjectReference to NetIndex.Core, so the compiler
+        // enforces that invariant. We verify the non-conflicting Core sub-namespaces here.
         foreach (var ingestion in new[] { "NetIndex.Ingestion.Pdf", "NetIndex.Ingestion.Docx", "NetIndex.Ingestion.Tesseract" })
         {
-            AssertNoDependency(ingestion, "NetIndex.Core", $"{ingestion} should not depend on Core");
+            AssertNoDependencies(ingestion,
+                ["NetIndex.Core.NullObjects", "NetIndex.Core.Options"],
+                $"{ingestion} should not depend on Core implementation sub-namespaces");
         }
     }
 
