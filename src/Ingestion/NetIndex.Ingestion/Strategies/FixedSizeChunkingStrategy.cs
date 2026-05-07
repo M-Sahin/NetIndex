@@ -33,7 +33,7 @@ public sealed class FixedSizeChunkingStrategy : IChunkingStrategy
     /// <remarks>
     /// The chunking algorithm is synchronous because token approximation is computationally cheap
     /// and requires no I/O. The method returns a completed <see cref="Task{TResult}"/> via
-    /// <see cref="Task.FromResult{TResult}(T)"/> to satisfy the <see cref="IChunkingStrategy"/> interface.
+    /// <see cref="Task.FromResult{TResult}(TResult)"/> to satisfy the <see cref="IChunkingStrategy"/> interface.
     /// </remarks>
     public Task<IEnumerable<RagChunk>> ChunkAsync(string text, ChunkingOptions options, CancellationToken cancellationToken = default)
     {

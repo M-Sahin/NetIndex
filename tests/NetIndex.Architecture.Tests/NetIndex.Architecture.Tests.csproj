@@ -26,5 +26,6 @@
     <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Docx/NetIndex.Ingestion.Docx.csproj" />
     <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Markdown/NetIndex.Ingestion.Markdown.csproj" />
     <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Tesseract/NetIndex.Ingestion.Tesseract.csproj" />
+    <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion/NetIndex.Ingestion.csproj" />
   </ItemGroup>
 </Project>
