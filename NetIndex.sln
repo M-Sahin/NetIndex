@@ -1,4 +1,4 @@
-﻿Microsoft Visual Studio Solution File, Format Version 12.00
+Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.9.0.0
 MinimumVisualStudioVersion = 10.0.40219.1
@@ -66,9 +66,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetIndex.Architecture.Tests
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Ingestion", "Ingestion", "{34C53729-59C7-4057-85AE-51D8FCBD7512}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetIndex.Ingestion.Markdown", "src\Ingestion\NetIndex.Ingestion.Markdown\NetIndex.Ingestion.Markdown.csproj", "{270B4B4D-A390-40C9-8ABD-581691410BB9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetIndex.Ingestion", "src\Ingestion\NetIndex.Ingestion\NetIndex.Ingestion.csproj", "{270B4B4D-A390-40C9-8ABD-581691410BB9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetIndex.Ingestion.Markdown", "src\Ingestion\NetIndex.Ingestion.Markdown\NetIndex.Ingestion.Markdown.csproj", "{270B4B4D-A390-40C9-8ABD-581691410BB0}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetIndex.Ingestion.Markdown.Tests", "tests\NetIndex.Ingestion.Markdown.Tests\NetIndex.Ingestion.Markdown.Tests.csproj", "{BBC79A4C-0877-4260-A57C-1863F016D723}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetIndex.Ingestion.Tests", "tests\NetIndex.Ingestion.Tests\NetIndex.Ingestion.Tests.csproj", "{BBC79A4C-0877-4260-A57C-1863F016D724}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -196,6 +200,10 @@ Global
 		{BBC79A4C-0877-4260-A57C-1863F016D723}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BBC79A4C-0877-4260-A57C-1863F016D723}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BBC79A4C-0877-4260-A57C-1863F016D723}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BBC79A4C-0877-4260-A57C-1863F016D724}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BBC79A4C-0877-4260-A57C-1863F016D724}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BBC79A4C-0877-4260-A57C-1863F016D724}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BBC79A4C-0877-4260-A57C-1863F016D724}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{B234C483-821A-4A57-BAB2-6EF6FADDF6A8} = {5EACFE3A-A356-4467-8C1C-0B49E87BB639}
@@ -203,6 +211,8 @@ Global
 		{54EE723C-A464-4AA3-8E59-52E654D192A3} = {75EA80A9-6463-4FB8-9ADC-01F43C2902FD}
 		{34C53729-59C7-4057-85AE-51D8FCBD7512} = {5EACFE3A-A356-4467-8C1C-0B49E87BB639}
 		{270B4B4D-A390-40C9-8ABD-581691410BB9} = {34C53729-59C7-4057-85AE-51D8FCBD7512}
+		{270B4B4D-A390-40C9-8ABD-581691410BB0} = {34C53729-59C7-4057-85AE-51D8FCBD7512}
 		{BBC79A4C-0877-4260-A57C-1863F016D723} = {75EA80A9-6463-4FB8-9ADC-01F43C2902FD}
+		{BBC79A4C-0877-4260-A57C-1863F016D724} = {75EA80A9-6463-4FB8-9ADC-01F43C2902FD}
 	EndGlobalSection
 EndGlobal

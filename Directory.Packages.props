@@ -41,5 +41,9 @@
 
     <!-- Benchmarking -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.13.12" />
+
+    <!-- Property-based testing -->
+    <PackageVersion Include="FsCheck" Version="2.16.6" />
+    <PackageVersion Include="FsCheck.Xunit" Version="2.16.6" />
   </ItemGroup>
 </Project>
