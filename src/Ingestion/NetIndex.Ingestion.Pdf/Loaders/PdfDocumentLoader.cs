@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -57,7 +58,7 @@ public sealed class PdfDocumentLoader : IDocumentLoader<PdfFormat>
     /// <returns>A populated <see cref="IDocument"/> with extracted text, metadata, and file URI.</returns>
     public async Task<IDocument> LoadAsync(string filePath, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(filePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
         await using var fileStream = new FileStream(
             filePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true);
 
@@ -68,6 +69,36 @@ public sealed class PdfDocumentLoader : IDocumentLoader<PdfFormat>
 
         return await LoadCoreAsync(fileStream, new Uri(Path.GetFullPath(filePath)), extraMetadata, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Enumerates all <c>.pdf</c> files under <paramref name="directoryPath"/> and yields a loaded document per file.
+    /// </summary>
+    /// <param name="directoryPath">Directory to scan.</param>
+    /// <param name="recursive">When <see langword="true"/>, descends into subdirectories.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An async stream of <see cref="IDocument"/>.</returns>
+    public IAsyncEnumerable<IDocument> LoadDirectoryAsync(string directoryPath, bool recursive = true, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
+        return LoadDirectoryInternalAsync(directoryPath, recursive, cancellationToken);
+    }
+
+    private async IAsyncEnumerable<IDocument> LoadDirectoryInternalAsync(
+        string directoryPath,
+        bool recursive,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+        foreach (var filePath in Directory.EnumerateFiles(directoryPath, "*", searchOption))
+        {
+            if (!filePath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return await LoadAsync(filePath, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private async Task<IDocument> LoadCoreAsync(

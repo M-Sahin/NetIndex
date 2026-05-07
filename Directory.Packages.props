@@ -36,6 +36,9 @@
     <!-- PDF ingestion -->
     <PackageVersion Include="PdfPig" Version="0.1.14" />
 
+    <!-- DOCX and Markdown ingestion -->
+    <PackageVersion Include="DocumentFormat.OpenXml" Version="3.5.1" />
+
     <!-- Benchmarking -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.13.12" />
   </ItemGroup>

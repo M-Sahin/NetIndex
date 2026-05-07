@@ -24,6 +24,7 @@
     <ProjectReference Include="../../src/Storage/NetIndex.Storage.Pgvector/NetIndex.Storage.Pgvector.csproj" />
     <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Pdf/NetIndex.Ingestion.Pdf.csproj" />
     <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Docx/NetIndex.Ingestion.Docx.csproj" />
+    <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Markdown/NetIndex.Ingestion.Markdown.csproj" />
     <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Tesseract/NetIndex.Ingestion.Tesseract.csproj" />
   </ItemGroup>
 </Project>

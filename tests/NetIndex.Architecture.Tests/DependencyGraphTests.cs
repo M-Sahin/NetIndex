@@ -206,7 +206,7 @@ public class DependencyGraphTests
     [Fact]
     public void Ingestion_ShouldNot_DependOn_AspNetCore()
     {
-        foreach (var ingestion in new[] { "NetIndex.Ingestion.Pdf", "NetIndex.Ingestion.Docx", "NetIndex.Ingestion.Tesseract" })
+        foreach (var ingestion in new[] { "NetIndex.Ingestion.Pdf", "NetIndex.Ingestion.Docx", "NetIndex.Ingestion.Markdown", "NetIndex.Ingestion.Tesseract" })
         {
             AssertNoDependency(ingestion, "NetIndex.AspNetCore", $"{ingestion} should not depend on AspNetCore");
         }
@@ -215,7 +215,7 @@ public class DependencyGraphTests
     [Fact]
     public void Ingestion_ShouldNot_DependOn_Core()
     {
-        foreach (var ingestion in new[] { "NetIndex.Ingestion.Pdf", "NetIndex.Ingestion.Docx", "NetIndex.Ingestion.Tesseract" })
+        foreach (var ingestion in new[] { "NetIndex.Ingestion.Pdf", "NetIndex.Ingestion.Docx", "NetIndex.Ingestion.Markdown", "NetIndex.Ingestion.Tesseract" })
         {
             AssertNoAssemblyReference(ingestion,
                 "NetIndex.Core",
@@ -226,7 +226,7 @@ public class DependencyGraphTests
     [Fact]
     public void Ingestion_ShouldNot_DependOn_Providers()
     {
-        foreach (var ingestion in new[] { "NetIndex.Ingestion.Pdf", "NetIndex.Ingestion.Docx", "NetIndex.Ingestion.Tesseract" })
+        foreach (var ingestion in new[] { "NetIndex.Ingestion.Pdf", "NetIndex.Ingestion.Docx", "NetIndex.Ingestion.Markdown", "NetIndex.Ingestion.Tesseract" })
         {
             AssertNoDependency(ingestion, "NetIndex.Providers", $"{ingestion} should not depend on Providers");
         }
@@ -235,7 +235,7 @@ public class DependencyGraphTests
     [Fact]
     public void Ingestion_ShouldNot_DependOn_Storage()
     {
-        foreach (var ingestion in new[] { "NetIndex.Ingestion.Pdf", "NetIndex.Ingestion.Docx", "NetIndex.Ingestion.Tesseract" })
+        foreach (var ingestion in new[] { "NetIndex.Ingestion.Pdf", "NetIndex.Ingestion.Docx", "NetIndex.Ingestion.Markdown", "NetIndex.Ingestion.Tesseract" })
         {
             AssertNoDependency(ingestion, "NetIndex.Storage", $"{ingestion} should not depend on Storage");
         }

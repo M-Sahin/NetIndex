@@ -11,13 +11,13 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="FluentAssertions" />
-    <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Docx/NetIndex.Ingestion.Docx.csproj" />
+    <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Markdown/NetIndex.Ingestion.Markdown.csproj" />
     <ProjectReference Include="../NetIndex.Testing.Common/NetIndex.Testing.Common.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Fixtures/sample.docx" />
+    <EmbeddedResource Include="Fixtures/sample-with-frontmatter.md" />
+    <EmbeddedResource Include="Fixtures/sample-no-frontmatter.md" />
   </ItemGroup>
 </Project>
