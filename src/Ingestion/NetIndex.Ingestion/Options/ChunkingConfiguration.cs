@@ -56,9 +56,9 @@ public sealed class ChunkingConfiguration
     /// Configures the fixed-size chunking strategy.
     /// </summary>
     /// <param name="chunkSize">Target number of tokens per chunk. Must be greater than zero.</param>
-    /// <param name="overlap">Number of tokens to overlap between consecutive chunks. Must be >= 0 and < <paramref name="chunkSize"/>.</param>
+    /// <param name="overlap">Number of tokens to overlap between consecutive chunks. Must be &gt;= 0 and &lt; <paramref name="chunkSize"/>.</param>
     /// <returns>This instance for fluent chaining.</returns>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="chunkSize"/> <= 0 or <paramref name="overlap"/> is out of range.</exception>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="chunkSize"/> &lt;= 0 or <paramref name="overlap"/> is out of range.</exception>
     public ChunkingConfiguration FixedSize(int chunkSize, int overlap)
     {
         ValidateChunkParameters(chunkSize, overlap);
