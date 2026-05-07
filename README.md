@@ -2,8 +2,8 @@
 
 **Production-grade RAG framework for .NET 9.** Ingest documents, embed vectors, search semantically, and stream LLM answers — all in C#, wired into your existing DI container.
 
-[![Build](https://github.com/M-Sahin/rag-pipeline-net/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/M-Sahin/rag-pipeline-net/actions/workflows/main.yml)
-[![PR Gate](https://github.com/M-Sahin/rag-pipeline-net/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/M-Sahin/rag-pipeline-net/actions/workflows/pr.yml)
+[![Build](https://github.com/M-Sahin/NetIndex/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/M-Sahin/NetIndex/actions/workflows/main.yml)
+[![PR Gate](https://github.com/M-Sahin/NetIndex/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/M-Sahin/NetIndex/actions/workflows/pr.yml)
 [![NuGet](https://img.shields.io/nuget/v/NetIndex?color=004880)](https://www.nuget.org/packages/NetIndex)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-9.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/9.0)
