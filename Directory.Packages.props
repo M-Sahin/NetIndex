@@ -31,7 +31,7 @@
     <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
 
     <!-- OllamaSharp for Ollama provider -->
-    <PackageVersion Include="OllamaSharp" Version="4.14.0" />
+    <PackageVersion Include="OllamaSharp" Version="5.0.1" />
 
     <!-- PDF ingestion -->
     <PackageVersion Include="PdfPig" Version="0.1.14" />
