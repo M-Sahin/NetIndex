@@ -8,4 +8,12 @@
   <ItemGroup>
     <ProjectReference Include="../../Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="OllamaSharp" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="NetIndex.Providers.Ollama.Tests" />
+  </ItemGroup>
 </Project>
