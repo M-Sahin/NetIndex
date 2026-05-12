@@ -292,3 +292,72 @@ internal sealed class ExceptionThrowingHandler : HttpMessageHandler
         HttpRequestMessage request, CancellationToken cancellationToken)
         => throw _exception;
 }
+
+internal sealed class MidStreamThrowingStream : Stream
+{
+    private readonly byte[] _firstChunk;
+    private readonly Exception _throwException;
+    private bool _firstRead = true;
+
+    internal MidStreamThrowingStream(byte[] firstChunk, Exception throwException)
+    {
+        _firstChunk = firstChunk;
+        _throwException = throwException;
+    }
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        if (_firstRead)
+        {
+            _firstRead = false;
+            var len = Math.Min(count, _firstChunk.Length);
+            Buffer.BlockCopy(_firstChunk, 0, buffer, offset, len);
+            return len;
+        }
+
+        throw _throwException;
+    }
+
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    public override void Flush() { }
+}
+
+internal sealed class MidStreamThrowingHandler : HttpMessageHandler
+{
+    private readonly string _firstChunkBody;
+    private readonly HttpStatusCode _secondCallStatus;
+    private bool _firstCall;
+
+    internal MidStreamThrowingHandler(string firstChunkBody, HttpStatusCode secondCallStatus)
+    {
+        _firstChunkBody = firstChunkBody;
+        _secondCallStatus = secondCallStatus;
+        _firstCall = true;
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (_firstCall)
+        {
+            _firstCall = false;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(_firstChunkBody, System.Text.Encoding.UTF8, "application/x-ndjson"),
+            });
+        }
+
+        throw new HttpRequestException(
+            $"Simulated HTTP {(int)_secondCallStatus}",
+            null,
+            _secondCallStatus);
+    }
+}

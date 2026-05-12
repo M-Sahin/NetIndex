@@ -33,4 +33,28 @@ public static class NetIndexBuilderExtensions
 
         return builder;
     }
+
+    /// <summary>Registers the Ollama chat client (LLM generation).</summary>
+    /// <param name="builder">The builder to configure.</param>
+    /// <param name="configure">Optional options delegate.</param>
+    /// <returns>The same builder for chaining.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="builder"/> is null.</exception>
+    public static INetIndexBuilder UseOllamaChatClient(
+        this INetIndexBuilder builder,
+        Action<OllamaChatOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        var optionsBuilder = builder.Services.AddOptions<OllamaChatOptions>();
+        if (configure is not null)
+        {
+            optionsBuilder.Configure(configure);
+        }
+
+        builder.Services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IValidateOptions<OllamaChatOptions>, OllamaChatOptionsValidator>());
+        builder.Services.TryAddSingleton<IChatClient, OllamaChatClient>();
+
+        return builder;
+    }
 }
