@@ -76,6 +76,33 @@ public sealed class LocalPipelineEndToEndTests
     }
 
     [Fact]
+    public async Task FullPipeline_IngestAndQuery_WithChunking_SplitsContentAsync()
+    {
+        // Arrange — FixedSizeChunkingStrategy with the pipeline's default 1000-token (4000-char) limit.
+        // Three paragraphs: the first two fit within 4000 chars; adding the third exceeds it → 2 chunks.
+        var services = new ServiceCollection();
+        services.AddSingleton(CreateAllowAllResolver());
+        services.AddSingleton<IEmbeddingGenerator>(new FakeEmbeddingGenerator(384));
+        services.AddNetIndex(builder => builder.UseChunking(o => o.FixedSize(512, 64))).Build();
+
+        using var provider = services.BuildServiceProvider();
+        var pipeline = provider.GetRequiredService<INetIndexPipeline>();
+
+        var para1 = string.Concat(Enumerable.Repeat("NetIndex provides RAG capabilities for .NET. ", 34));    // ~1530 chars
+        var para2 = string.Concat(Enumerable.Repeat("Vector search retrieves the most relevant chunks. ", 31)); // ~1550 chars
+        var para3 = string.Concat(Enumerable.Repeat("The pipeline orchestrates ingest and query flows. ", 31)); // ~1550 chars
+        var document = CreateDocument("doc-chunked", $"{para1}\n\n{para2}\n\n{para3}");
+
+        // Act
+        await pipeline.IngestAsync(document);
+        var results = await CollectResultsAsync(pipeline.QueryAsync("RAG pipeline chunking"));
+
+        // Assert — document was split into multiple chunks, all referencing the same document ID
+        Assert.True(results.Count > 1, $"Expected multiple chunks from splitting, got {results.Count}");
+        Assert.All(results, r => Assert.Equal("doc-chunked", r.Item.DocumentId));
+    }
+
+    [Fact]
     public async Task FullPipeline_IngestMultipleDocuments_QueryReturnsRelevantAsync()
     {
         // Arrange
@@ -109,7 +136,7 @@ public sealed class LocalPipelineEndToEndTests
     // ── AC #3: QueryAsync returns ordered results with scores ──
 
     [Fact]
-    public async Task FullPipeline_Query_ReturnsResultsOrderedByScoreAsync()
+    public async Task FullPipeline_Query_ReturnsOrderedByScoreAsync()
     {
         // Arrange
         var services = new ServiceCollection();
