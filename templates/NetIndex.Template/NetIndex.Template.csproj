@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Template packages do not emit a runtime library -->
+    <PackageType>Template</PackageType>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <ContentTargetFolders>content</ContentTargetFolders>
+
+    <!-- Suppress "no dependencies for any framework" warning — expected for template packages -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+
+    <!-- Prevent the MSBuild SDK from treating content/ as compilable C# source -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+
+    <!-- Documentation and analyzers are not meaningful without source to compile -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>NetIndex.Template</PackageId>
+    <Title>NetIndex Enterprise RAG Project Template</Title>
+    <Description>dotnet new template that scaffolds an ASP.NET Core 9 RAG app pre-wired for Azure OpenAI + pgvector, with a commented Ollama + SQLite swap block.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Use explicit PackagePath so files under content/ on disk land at content/ in the package
+      without double-nesting. %(RecursiveDir) is relative to the glob base (content\), so:
+        content\NetIndex.Template\Program.cs  →  content\NetIndex.Template\Program.cs in .nupkg
+    -->
+    <Content Include="content/**/*" Exclude="content/**/bin/**;content/**/obj/**;content/**/.vs/**;content/**/.DS_Store;content/**/*.user;content/**/node_modules/**">
+      <Pack>true</Pack>
+      <PackagePath>content/%(RecursiveDir)%(Filename)%(Extension)</PackagePath>
+    </Content>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <IsTestProject>true</IsTestProject>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Test methods are not public API; suppress the missing-XML-doc warning -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+  </ItemGroup>
+
+  <!--
+    Copy the template content files to output so tests can locate them without
+    relying on path-walking from AppContext.BaseDirectory up to the repo root.
+  -->
+  <ItemGroup>
+    <Content Include="../../templates/NetIndex.Template/content/NetIndex.Template/.template.config/template.json">
+      <Link>TemplateContent/.template.config/template.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="../../templates/NetIndex.Template/content/NetIndex.Template/Program.cs">
+      <Link>TemplateContent/Program.cs</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="../../templates/NetIndex.Template/content/NetIndex.Template/appsettings.json">
+      <Link>TemplateContent/appsettings.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="../../templates/NetIndex.Template/content/NetIndex.Template/appsettings.Development.json">
+      <Link>TemplateContent/appsettings.Development.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="../../templates/NetIndex.Template/content/NetIndex.Template/NetIndex.Template.csproj">
+      <Link>TemplateContent/NetIndex.Template.csproj</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="../../templates/NetIndex.Template/content/NetIndex.Template/README.md">
+      <Link>TemplateContent/README.md</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>
