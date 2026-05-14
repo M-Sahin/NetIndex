@@ -161,6 +161,17 @@ dotnet test NetIndex.sln --filter "Category=ArchContract|Category=SecurityContra
 
 The full `NetIndex.Core` repository is Apache-2.0. Enterprise add-ons (RBAC, audit dashboard, managed hosting, compliance packs, priority support) are available under commercial terms.
 
+## Templates
+
+Scaffold a new ASP.NET Core 9 RAG app pre-wired for Azure OpenAI + pgvector (with an Ollama + SQLite swap block for local dev):
+
+```bash
+dotnet new install NetIndex.Template
+dotnet new netindex -n MyApp -o ./MyApp
+```
+
+See [templates/NetIndex.Template/content/NetIndex.Template/README.md](templates/NetIndex.Template/content/NetIndex.Template/README.md) for configuration and local-dev swap instructions.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). All PRs run the full contract + architecture test gate before merge.

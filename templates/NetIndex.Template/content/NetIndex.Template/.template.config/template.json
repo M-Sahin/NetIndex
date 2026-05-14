@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Murat",
+  "classifications": ["Web", "RAG", "AI"],
+  "identity": "NetIndex.Template",
+  "name": "NetIndex Enterprise RAG (Azure OpenAI + pgvector)",
+  "shortName": "netindex",
+  "sourceName": "NetIndex.Template",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  }
+}

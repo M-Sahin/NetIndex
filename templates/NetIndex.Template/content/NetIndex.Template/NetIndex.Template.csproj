@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- NetIndex core packages -->
+    <PackageReference Include="NetIndex.Core" Version="0.9.1" />
+    <PackageReference Include="NetIndex.AspNetCore" Version="0.9.1" />
+
+    <!-- Enterprise path: Azure OpenAI + pgvector (active by default) -->
+    <PackageReference Include="NetIndex.Providers.AzureOpenAI" Version="0.9.1" />
+    <PackageReference Include="NetIndex.Storage.Pgvector" Version="0.9.1" />
+
+    <!-- Local dev path: Ollama + SQLite (swap block, commented out by default) -->
+    <PackageReference Include="NetIndex.Providers.Ollama" Version="0.9.1" />
+    <PackageReference Include="NetIndex.Storage.Sqlite" Version="0.9.1" />
+  </ItemGroup>
+
+</Project>
