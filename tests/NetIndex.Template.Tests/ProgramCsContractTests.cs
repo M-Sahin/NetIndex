@@ -5,7 +5,7 @@ using Xunit;
 namespace NetIndex.Template.Tests;
 
 /// <summary>
-/// Validates the scaffolded Program.cs structure (AC#4, AC#9, Story 4.2 AC#1-2).
+/// Validates the scaffolded Program.cs structure (AC#4, AC#9, Story 4.2 AC#1-2, Story 4.3 AC#4, AC#6).
 /// </summary>
 public sealed class ProgramCsContractTests
 {
@@ -170,14 +170,59 @@ public sealed class ProgramCsContractTests
             "Program.cs must contain the LOCAL DEV swap marker comment");
     }
 
+    // Story 4.3: replaced NoIngestQueryOrGenerateEndpoints with a narrower rule
+    // that allows /ingest and /query (added this story) while still forbidding
+    // /generate (Story 4.4) and /api/-prefixed routes (Story 4.4).
     [Trait("Category", "PipelineContract")]
     [Fact]
-    public void ProgramCs_WhenLoaded_NoIngestQueryOrGenerateEndpoints()
+    public void ProgramCs_WhenLoaded_NoGenerateOrApiPrefixedEndpoints()
     {
-        // Anchor to Map* verb calls so substring collisions like /generate-key,
-        // /queryString, or doc comments mentioning the words don't false-fail.
-        var routePattern = @"\.Map(Get|Post|Put|Delete|Patch)\s*\(\s*""/(ingest|query|generate)\b";
-        Regex.IsMatch(Content, routePattern).Should().BeFalse(
-            "Story 4.2 must not add /ingest, /query, or /generate endpoints — they belong to Story 4.4");
+        // /generate belongs to Story 4.4 — must not appear yet.
+        var generatePattern = @"\.Map(Get|Post|Put|Delete|Patch)\s*\(\s*""/generate\b";
+        Regex.IsMatch(Content, generatePattern).Should().BeFalse(
+            "Story 4.3 must not add a /generate endpoint — that belongs to Story 4.4");
+
+        // /api/* prefixed routes belong to Story 4.4 — must not appear yet.
+        var apiPrefixPattern = @"\.Map(Get|Post|Put|Delete|Patch)\s*\(\s*""/api/";
+        Regex.IsMatch(Content, apiPrefixPattern).Should().BeFalse(
+            "Story 4.3 must not add /api/* prefixed endpoints — that belongs to Story 4.4");
+    }
+
+    // Story 4.3: the /ingest POST endpoint must be present and active.
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void ProgramCs_WhenLoaded_ContainsActiveIngestEndpoint()
+    {
+        // Match app.MapPost("/ingest" — no \b needed: the closing " terminates the route string
+        Regex.IsMatch(Content, @"^\s*app\.MapPost\(\s*""/ingest""", RegexOptions.Multiline).Should().BeTrue(
+            "Program.cs must contain an active app.MapPost(\"/ingest\", ...) endpoint");
+    }
+
+    // Story 4.3: the /query GET endpoint must be present and active.
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void ProgramCs_WhenLoaded_ContainsActiveQueryEndpoint()
+    {
+        // Match app.MapGet("/query" — no \b needed: the closing " terminates the route string
+        Regex.IsMatch(Content, @"^\s*app\.MapGet\(\s*""/query""", RegexOptions.Multiline).Should().BeTrue(
+            "Program.cs must contain an active app.MapGet(\"/query\", ...) endpoint");
+    }
+
+    // Story 4.3: an explicit non-deny-all ITenantResolver must be registered
+    // so the dev-swap path does not throw NetIndexAuthorizationException on every call.
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void ProgramCs_WhenLoaded_RegistersNonDenyAllTenantResolver()
+    {
+        // Match AddSingleton<ITenantResolver, SomeClass> where SomeClass is not DenyAllTenantResolver.
+        // The resolver class name is left open so a future story can swap LocalDevTenantResolver
+        // for a different dev resolver without breaking this test.
+        Regex.IsMatch(
+            Content,
+            @"AddSingleton<\s*ITenantResolver\s*,\s*(?!DenyAllTenantResolver)\w+\s*>",
+            RegexOptions.Multiline
+        ).Should().BeTrue(
+            "Program.cs must register an ITenantResolver that is not DenyAllTenantResolver " +
+            "so the local-dev pipeline operations can proceed");
     }
 }

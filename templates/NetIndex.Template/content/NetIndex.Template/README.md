@@ -4,11 +4,11 @@ An ASP.NET Core 9 Minimal API scaffolded from the `netindex` template. Wired for
 
 ## What was scaffolded
 
-- `Program.cs` — Minimal API entry point with `AddNetIndex(...)` wiring, active Azure OpenAI + pgvector configuration, and a `/health` endpoint.
+- `Program.cs` — Minimal API entry point with `AddNetIndex(...)` wiring, active Azure OpenAI + pgvector configuration, `/health`, `/ingest`, and `/query` endpoints, and a dev-only `LocalDevTenantResolver`.
 - `appsettings.json` / `appsettings.Development.json` — All four NetIndex provider sub-sections (`AzureOpenAI`, `Pgvector`, `Ollama`, `Sqlite`) with placeholder values. No real secrets are present.
 - `{name}.csproj` — SDK-style `Microsoft.NET.Sdk.Web` project referencing all six NetIndex packages.
 
-> **Important:** `AddNetIndex()` registers `DenyAllTenantResolver` by default. This means every pipeline operation is denied until you configure an `ITenantResolver`. Production deployments must configure `ITenantResolver` before serving traffic.
+> **Important:** `AddNetIndex()` registers `DenyAllTenantResolver` by default. This means every pipeline operation is denied until you configure an `ITenantResolver`. The scaffolded project ships with `LocalDevTenantResolver` for local convenience — **replace it with a real `ITenantResolver` before serving production traffic.**
 
 ## Configure Azure OpenAI + pgvector (default)
 
@@ -50,6 +50,47 @@ The `appsettings.json` already contains the Ollama and SQLite sections with sens
 
 **To switch back to Azure OpenAI + pgvector**, reverse the comment changes: comment the two `UseOllama`/`UseSqlite` lines and uncomment the two `UseAzureOpenAI`/`UsePgvector` lines.
 
+## Zero-Config Local Quickstart
+
+Get a working local RAG pipeline running in under 60 seconds.
+
+**Prerequisites**
+
+- Ollama installed and running: `ollama serve`
+- Required models pulled:
+  - `ollama pull nomic-embed-text`
+  - `ollama pull mistral`
+- Local swap performed (see section above — comment Azure/pgvector, uncomment Ollama/SQLite)
+
+**Start the app**
+
+```bash
+dotnet restore
+dotnet run
+```
+
+**Ingest a document**
+
+```bash
+curl -X POST http://localhost:5000/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"id":"doc1","content":"NetIndex is a .NET RAG framework for building production-ready retrieval-augmented generation pipelines."}'
+```
+
+Expected response: `{"id":"doc1"}`
+
+**Query the pipeline**
+
+```bash
+curl "http://localhost:5000/query?q=RAG+framework"
+```
+
+Expected response: a JSON array of matching chunks, each with `documentId`, `score`, and `text`.
+
+> **Note:** Kestrel's default port may vary. Check the console output for the actual URL, or set `ASPNETCORE_URLS=http://localhost:5000` before running to pin it.
+
+> **Dev tenant resolver:** The scaffolded `LocalDevTenantResolver` allows all operations without real authentication. This is a development convenience only — replace it with a real `ITenantResolver` (e.g., `ClaimsTenantResolver`) before serving production traffic.
+
 ## Run it
 
 ```bash
@@ -59,12 +100,10 @@ dotnet run
 
 Then verify: `curl http://localhost:5000/health`
 
-> **Note:** Kestrel's default port may vary. Check the console output for the actual URL, or set `ASPNETCORE_URLS=http://localhost:5000` before running to pin it.
-
 Expected response: `{"status":"Healthy"}`
 
 ## Next steps
 
-- Configure `ITenantResolver` before serving production traffic. See the [project README](https://github.com/M-Sahin/NetIndex/blob/main/README.md) for architecture guidance.
-- Add `/ingest`, `/query`, and `/generate` endpoints (covered in Story 4.4).
+- Replace `LocalDevTenantResolver` with a real `ITenantResolver` before serving production traffic. See the [project README](https://github.com/M-Sahin/NetIndex/blob/main/README.md) for architecture guidance.
+- Story 4.4 will formalize the sample endpoints under `/api/*` and add `/generate` with proper error handling.
 - Review [CONTRIBUTING.md](https://github.com/M-Sahin/NetIndex/blob/main/CONTRIBUTING.md) for contribution guidelines.

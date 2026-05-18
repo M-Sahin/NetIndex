@@ -5,7 +5,8 @@ using Xunit;
 namespace NetIndex.Template.Tests;
 
 /// <summary>
-/// Validates the scaffolded README.md required H2 sections and local-swap narrative (AC#6, AC#9, Story 4.2 AC#4).
+/// Validates the scaffolded README.md required H2 sections and local-swap narrative
+/// (AC#6, AC#9, Story 4.2 AC#4, Story 4.3 AC#5, AC#6).
 /// </summary>
 public sealed class ReadmeContractTests
 {
@@ -31,6 +32,23 @@ public sealed class ReadmeContractTests
         }
     }
 
+    /// <summary>
+    /// Returns the text between the "Zero-Config Local Quickstart" H2 heading and
+    /// the next H2 heading (or end of file). Assertions anchored to this slice
+    /// cannot pass accidentally from mentions in other sections.
+    /// </summary>
+    private static string QuickstartSection
+    {
+        get
+        {
+            var match = Regex.Match(
+                Content,
+                @"^##\s*Zero-Config Local Quickstart.*?(?=^##\s|\z)",
+                RegexOptions.Multiline | RegexOptions.Singleline);
+            return match.Success ? match.Value : string.Empty;
+        }
+    }
+
     [Trait("Category", "PipelineContract")]
     [Fact]
     public void Readme_ContentFile_Exists()
@@ -44,6 +62,7 @@ public sealed class ReadmeContractTests
     [InlineData("## What was scaffolded")]
     [InlineData("## Configure Azure OpenAI + pgvector (default)")]
     [InlineData("## Switch to Local Development (Ollama + SQLite)")]
+    [InlineData("## Zero-Config Local Quickstart")]
     [InlineData("## Run it")]
     [InlineData("## Next steps")]
     public void Readme_WhenLoaded_ContainsRequiredSection(string heading)
@@ -111,5 +130,36 @@ public sealed class ReadmeContractTests
 
         section.Should().Contain("switch back",
             "local swap section must explain how to switch back to Azure + pgvector");
+    }
+
+    // Story 4.3: the Zero-Config Local Quickstart section must document the end-to-end
+    // curl flow for POST /ingest and GET /query.
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void Readme_WhenLoaded_QuickstartSectionContainsCurlExamples()
+    {
+        var section = QuickstartSection;
+        section.Should().NotBeEmpty("the Zero-Config Local Quickstart H2 section must exist");
+
+        section.Should().Contain("curl",
+            "quickstart section must contain curl examples");
+        section.Should().Contain("/ingest",
+            "quickstart section must document the /ingest endpoint");
+        section.Should().Contain("/query",
+            "quickstart section must document the /query endpoint");
+        section.Should().Contain("dotnet run",
+            "quickstart section must include the dotnet run step");
+    }
+
+    // Story 4.3: the quickstart section must call out the dev-only tenant resolver.
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void Readme_WhenLoaded_QuickstartSectionCallsOutDevTenantResolver()
+    {
+        var section = QuickstartSection;
+        section.Should().NotBeEmpty("the Zero-Config Local Quickstart H2 section must exist");
+
+        section.Should().Contain("LocalDevTenantResolver",
+            "quickstart section must name LocalDevTenantResolver and explain it is dev-only");
     }
 }
