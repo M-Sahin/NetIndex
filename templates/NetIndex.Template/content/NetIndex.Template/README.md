@@ -48,6 +48,8 @@ Leave `ApiKey` empty to use Managed Identity (recommended for production).
 
 The `appsettings.json` already contains the Ollama and SQLite sections with sensible local defaults — no further edits needed for a first run.
 
+**To switch back to Azure OpenAI + pgvector**, reverse the comment changes: comment the two `UseOllama`/`UseSqlite` lines and uncomment the two `UseAzureOpenAI`/`UsePgvector` lines.
+
 ## Run it
 
 ```bash

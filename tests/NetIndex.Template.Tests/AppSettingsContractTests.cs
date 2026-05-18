@@ -6,7 +6,8 @@ using Xunit;
 namespace NetIndex.Template.Tests;
 
 /// <summary>
-/// Validates appsettings.json structure and absence of leaked secrets (AC#5, AC#9).
+/// Validates appsettings.json structure, local defaults, and absence of leaked secrets
+/// (AC#5, AC#9, Story 4.2 AC#3).
 /// </summary>
 public sealed class AppSettingsContractTests
 {
@@ -39,6 +40,14 @@ public sealed class AppSettingsContractTests
 
     [Trait("Category", "PipelineContract")]
     [Fact]
+    public void AppSettingsDev_WhenLoaded_IsValidJson()
+    {
+        var act = () => JsonDocument.Parse(DevContent);
+        act.Should().NotThrow("appsettings.Development.json must be well-formed JSON");
+    }
+
+    [Trait("Category", "PipelineContract")]
+    [Fact]
     public void AppSettings_WhenLoaded_ContainsNetIndexSection()
     {
         using var doc = JsonDocument.Parse(Content);
@@ -61,6 +70,20 @@ public sealed class AppSettingsContractTests
     }
 
     [Trait("Category", "PipelineContract")]
+    [Theory]
+    [InlineData("AzureOpenAI")]
+    [InlineData("Pgvector")]
+    [InlineData("Ollama")]
+    [InlineData("Sqlite")]
+    public void AppSettingsDev_WhenLoaded_ContainsRequiredSubSection(string subSection)
+    {
+        using var doc = JsonDocument.Parse(DevContent);
+        var netIndex = doc.RootElement.GetProperty("NetIndex");
+        netIndex.TryGetProperty(subSection, out _).Should().BeTrue(
+            $"NetIndex section in appsettings.Development.json must contain '{subSection}' sub-section");
+    }
+
+    [Trait("Category", "PipelineContract")]
     [Fact]
     public void AppSettings_WhenLoaded_PgvectorDimensionsIs1536()
     {
@@ -78,6 +101,96 @@ public sealed class AppSettingsContractTests
         doc.RootElement.GetProperty("NetIndex").GetProperty("Sqlite")
             .GetProperty("Dimensions").GetInt32().Should().Be(768,
             "Sqlite Dimensions must be 768 (nomic-embed-text embedding size)");
+    }
+
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void AppSettings_WhenLoaded_OllamaEndpointDefaultsToLocalhost()
+    {
+        using var doc = JsonDocument.Parse(Content);
+        var ollama = doc.RootElement.GetProperty("NetIndex").GetProperty("Ollama");
+        ollama.GetProperty("Endpoint").GetString().Should().Be("http://localhost:11434",
+            "Ollama Endpoint must default to http://localhost:11434");
+    }
+
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void AppSettings_WhenLoaded_OllamaEmbeddingModelDefaultsToNomicEmbedText()
+    {
+        using var doc = JsonDocument.Parse(Content);
+        var ollama = doc.RootElement.GetProperty("NetIndex").GetProperty("Ollama");
+        ollama.GetProperty("EmbeddingModel").GetString().Should().Be("nomic-embed-text",
+            "Ollama EmbeddingModel must default to nomic-embed-text");
+    }
+
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void AppSettings_WhenLoaded_OllamaChatModelDefaultsToMistral()
+    {
+        using var doc = JsonDocument.Parse(Content);
+        var ollama = doc.RootElement.GetProperty("NetIndex").GetProperty("Ollama");
+        ollama.GetProperty("ChatModel").GetString().Should().Be("mistral",
+            "Ollama ChatModel must default to mistral");
+    }
+
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void AppSettings_WhenLoaded_SqliteConnectionStringDefaultsToLocalDb()
+    {
+        using var doc = JsonDocument.Parse(Content);
+        var sqlite = doc.RootElement.GetProperty("NetIndex").GetProperty("Sqlite");
+        sqlite.GetProperty("ConnectionString").GetString().Should().Be("Data Source=./rag.db",
+            "Sqlite ConnectionString must default to Data Source=./rag.db");
+    }
+
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void AppSettingsDev_WhenLoaded_OllamaEndpointDefaultsToLocalhost()
+    {
+        using var doc = JsonDocument.Parse(DevContent);
+        var ollama = doc.RootElement.GetProperty("NetIndex").GetProperty("Ollama");
+        ollama.GetProperty("Endpoint").GetString().Should().Be("http://localhost:11434",
+            "appsettings.Development.json Ollama Endpoint must default to http://localhost:11434");
+    }
+
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void AppSettingsDev_WhenLoaded_OllamaEmbeddingModelDefaultsToNomicEmbedText()
+    {
+        using var doc = JsonDocument.Parse(DevContent);
+        var ollama = doc.RootElement.GetProperty("NetIndex").GetProperty("Ollama");
+        ollama.GetProperty("EmbeddingModel").GetString().Should().Be("nomic-embed-text",
+            "appsettings.Development.json Ollama EmbeddingModel must default to nomic-embed-text");
+    }
+
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void AppSettingsDev_WhenLoaded_OllamaChatModelDefaultsToMistral()
+    {
+        using var doc = JsonDocument.Parse(DevContent);
+        var ollama = doc.RootElement.GetProperty("NetIndex").GetProperty("Ollama");
+        ollama.GetProperty("ChatModel").GetString().Should().Be("mistral",
+            "appsettings.Development.json Ollama ChatModel must default to mistral");
+    }
+
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void AppSettingsDev_WhenLoaded_SqliteConnectionStringDefaultsToLocalDb()
+    {
+        using var doc = JsonDocument.Parse(DevContent);
+        var sqlite = doc.RootElement.GetProperty("NetIndex").GetProperty("Sqlite");
+        sqlite.GetProperty("ConnectionString").GetString().Should().Be("Data Source=./rag.db",
+            "appsettings.Development.json Sqlite ConnectionString must default to Data Source=./rag.db");
+    }
+
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void AppSettingsDev_WhenLoaded_SqliteDimensionsIs768()
+    {
+        using var doc = JsonDocument.Parse(DevContent);
+        doc.RootElement.GetProperty("NetIndex").GetProperty("Sqlite")
+            .GetProperty("Dimensions").GetInt32().Should().Be(768,
+            "appsettings.Development.json Sqlite Dimensions must be 768");
     }
 
     [Trait("Category", "PipelineContract")]
