@@ -172,14 +172,16 @@ public sealed class ProgramCsContractTests
 
     // Patch: Story 4.3 code review — assert .Build() is chained on AddNetIndex().
     // The missing-.Build() bug fix from Dev Notes can silently regress; this test
-    // prevents that without requiring a full Program.cs compilation.
+    // prevents that. Anchors on the lambda's closing brace + AddNetIndex's closing
+    // paren + .Build() so the assertion fails if the chain is dropped (a stray
+    // `var app = builder.Build();` elsewhere in the file cannot satisfy this).
     [Trait("Category", "PipelineContract")]
     [Fact]
     public void ProgramCs_WhenLoaded_ChainsBuildAfterAddNetIndex()
     {
         Regex.IsMatch(
             Content,
-            @"\.AddNetIndex\([^)]+\)[\s\S]*?\.Build\s*\(\s*\)",
+            @"\}\s*\)\s*\.Build\s*\(\s*\)",
             RegexOptions.Singleline
         ).Should().BeTrue(
             "Program.cs must chain .Build() on the AddNetIndex(...) call — " +
