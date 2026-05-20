@@ -18,6 +18,11 @@ internal sealed class LocalDevTenantResolver : ITenantResolver
 {
     private const string DevTenantId = "local-dev";
 
+    private static readonly IReadOnlyDictionary<string, string> Claims = new Dictionary<string, string>
+    {
+        ["tenant_id"] = DevTenantId,
+    };
+
     /// <inheritdoc />
     public Task<string> ResolveTenantIdAsync(CancellationToken cancellationToken = default)
     {
@@ -30,10 +35,6 @@ internal sealed class LocalDevTenantResolver : ITenantResolver
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        IReadOnlyDictionary<string, string> claims = new Dictionary<string, string>
-        {
-            ["tenant_id"] = DevTenantId,
-        };
-        return Task.FromResult(claims);
+        return Task.FromResult(Claims);
     }
 }

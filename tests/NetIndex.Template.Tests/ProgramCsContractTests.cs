@@ -170,6 +170,22 @@ public sealed class ProgramCsContractTests
             "Program.cs must contain the LOCAL DEV swap marker comment");
     }
 
+    // Patch: Story 4.3 code review — assert .Build() is chained on AddNetIndex().
+    // The missing-.Build() bug fix from Dev Notes can silently regress; this test
+    // prevents that without requiring a full Program.cs compilation.
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void ProgramCs_WhenLoaded_ChainsBuildAfterAddNetIndex()
+    {
+        Regex.IsMatch(
+            Content,
+            @"\.AddNetIndex\([^)]+\)[\s\S]*?\.Build\s*\(\s*\)",
+            RegexOptions.Singleline
+        ).Should().BeTrue(
+            "Program.cs must chain .Build() on the AddNetIndex(...) call — " +
+            "without it, INetIndexPipeline is never registered in DI");
+    }
+
     // Story 4.3: replaced NoIngestQueryOrGenerateEndpoints with a narrower rule
     // that allows /ingest and /query (added this story) while still forbidding
     // /generate (Story 4.4) and /api/-prefixed routes (Story 4.4).

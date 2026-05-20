@@ -105,5 +105,5 @@ Expected response: `{"status":"Healthy"}`
 ## Next steps
 
 - Replace `LocalDevTenantResolver` with a real `ITenantResolver` before serving production traffic. See the [project README](https://github.com/M-Sahin/NetIndex/blob/main/README.md) for architecture guidance.
-- Story 4.4 will formalize the sample endpoints under `/api/*` and add `/generate` with proper error handling.
+- The sample endpoints will be formalized under `/api/*` with a `/generate` endpoint and structured error handling in a future update.
 - Review [CONTRIBUTING.md](https://github.com/M-Sahin/NetIndex/blob/main/CONTRIBUTING.md) for contribution guidelines.
