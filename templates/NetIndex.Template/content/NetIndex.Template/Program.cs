@@ -1,3 +1,4 @@
+using System.Text.Json;
 using NetIndex.Core.Abstractions;
 using NetIndex.Template;
 
@@ -28,35 +29,194 @@ var app = builder.Build();
 
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
 
-app.MapPost("/ingest", async (IngestRequest body, INetIndexPipeline pipeline, CancellationToken ct) =>
+app.MapPost("/api/ingest", async (IngestRequest body, INetIndexPipeline pipeline, CancellationToken ct) =>
 {
-    var document = new TemplateDocument(body.Id, body.Content);
-    await pipeline.IngestAsync(document, ct);
-    return Results.Ok(new { id = body.Id });
+    if (string.IsNullOrWhiteSpace(body.Id) || string.IsNullOrWhiteSpace(body.Content))
+    {
+        return Results.Problem(
+            statusCode: 400,
+            type: "https://netindex.dev/errors/validation",
+            title: "Validation failed",
+            detail: "Both 'id' and 'content' must be non-blank.");
+    }
+
+    try
+    {
+        var document = new TemplateDocument(body.Id, body.Content);
+        await pipeline.IngestAsync(document, ct);
+        return Results.Ok(new { id = body.Id });
+    }
+    catch (NetIndexAuthorizationException ex)
+    {
+        return Results.Problem(
+            statusCode: 401,
+            type: "https://netindex.dev/errors/authorization",
+            title: "Authorization denied",
+            detail: ex.Message);
+    }
+    catch (NetIndexProviderException ex)
+    {
+        return Results.Problem(
+            statusCode: 502,
+            type: "https://netindex.dev/errors/provider",
+            title: "Provider failure",
+            detail: ex.Message,
+            extensions: new Dictionary<string, object?> { ["retryable"] = ex.IsRetryable });
+    }
+    catch (NetIndexException ex)
+    {
+        return Results.Problem(
+            statusCode: 500,
+            type: "https://netindex.dev/errors/internal",
+            title: "NetIndex error",
+            detail: ex.Message);
+    }
 });
 
-app.MapGet("/query", async (string q, INetIndexPipeline pipeline, CancellationToken ct) =>
+app.MapGet("/api/query", async (string q, int? top, INetIndexPipeline pipeline, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(q))
     {
-        return Results.BadRequest(new { error = "Query parameter 'q' is required." });
+        return Results.Problem(
+            statusCode: 400,
+            type: "https://netindex.dev/errors/validation",
+            title: "Validation failed",
+            detail: "Query parameter 'q' must be non-blank.");
     }
 
-    var results = new List<object>();
-    await foreach (var result in pipeline.QueryAsync(q, ct))
+    var topValue = top ?? 5;
+    if (topValue < 1 || topValue > 50)
     {
-        results.Add(new
-        {
-            documentId = result.Item.DocumentId,
-            score = result.Score,
-            text = result.Item.Text,
-        });
+        return Results.Problem(
+            statusCode: 400,
+            type: "https://netindex.dev/errors/validation",
+            title: "Validation failed",
+            detail: "'top' must be between 1 and 50.");
     }
 
-    return Results.Ok(results);
+    try
+    {
+        var results = new List<object>();
+        await foreach (var result in pipeline.QueryAsync(q, ct))
+        {
+            results.Add(new
+            {
+                documentId = result.Item.DocumentId,
+                score = result.Score,
+                text = result.Item.Text,
+            });
+        }
+
+        return Results.Ok(results.Take(topValue).ToList());
+    }
+    catch (NetIndexAuthorizationException ex)
+    {
+        return Results.Problem(
+            statusCode: 401,
+            type: "https://netindex.dev/errors/authorization",
+            title: "Authorization denied",
+            detail: ex.Message);
+    }
+    catch (NetIndexProviderException ex)
+    {
+        return Results.Problem(
+            statusCode: 502,
+            type: "https://netindex.dev/errors/provider",
+            title: "Provider failure",
+            detail: ex.Message,
+            extensions: new Dictionary<string, object?> { ["retryable"] = ex.IsRetryable });
+    }
+    catch (NetIndexException ex)
+    {
+        return Results.Problem(
+            statusCode: 500,
+            type: "https://netindex.dev/errors/internal",
+            title: "NetIndex error",
+            detail: ex.Message);
+    }
+});
+
+app.MapPost("/api/generate", async (HttpContext ctx, INetIndexPipeline pipeline, CancellationToken ct) =>
+{
+    GenerateRequest? body;
+    try
+    {
+        body = await ctx.Request.ReadFromJsonAsync<GenerateRequest>(ct);
+    }
+    catch (JsonException)
+    {
+        await Results.Problem(
+            statusCode: 400,
+            type: "https://netindex.dev/errors/validation",
+            title: "Validation failed",
+            detail: "Request body must be valid JSON with a 'query' field."
+        ).ExecuteAsync(ctx);
+        return;
+    }
+
+    if (body is null || string.IsNullOrWhiteSpace(body.Query))
+    {
+        await Results.Problem(
+            statusCode: 400,
+            type: "https://netindex.dev/errors/validation",
+            title: "Validation failed",
+            detail: "Request body 'query' must be non-blank."
+        ).ExecuteAsync(ctx);
+        return;
+    }
+
+    ctx.Response.Headers["Cache-Control"] = "no-cache";
+    ctx.Response.Headers["X-Accel-Buffering"] = "no";
+    ctx.Response.ContentType = "text/event-stream";
+
+    try
+    {
+        await foreach (var chunk in pipeline.GenerateAsync(body.Query, ct))
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                text = chunk.Text,
+                isComplete = chunk.IsComplete,
+                finishReason = chunk.FinishReason.ToString()
+            });
+            await ctx.Response.WriteAsync($"data: {json}\n\n", ct);
+            await ctx.Response.Body.FlushAsync(ct);
+        }
+    }
+    catch (NetIndexAuthorizationException ex) when (!ctx.Response.HasStarted)
+    {
+        await Results.Problem(
+            statusCode: 401,
+            type: "https://netindex.dev/errors/authorization",
+            title: "Authorization denied",
+            detail: ex.Message
+        ).ExecuteAsync(ctx);
+    }
+    catch (NetIndexProviderException ex) when (!ctx.Response.HasStarted)
+    {
+        await Results.Problem(
+            statusCode: 502,
+            type: "https://netindex.dev/errors/provider",
+            title: "Provider failure",
+            detail: ex.Message,
+            extensions: new Dictionary<string, object?> { ["retryable"] = ex.IsRetryable }
+        ).ExecuteAsync(ctx);
+    }
+    catch (NetIndexException ex) when (!ctx.Response.HasStarted)
+    {
+        await Results.Problem(
+            statusCode: 500,
+            type: "https://netindex.dev/errors/internal",
+            title: "NetIndex error",
+            detail: ex.Message
+        ).ExecuteAsync(ctx);
+    }
 });
 
 app.Run();
 
-// Minimal request body for /ingest
+// Minimal request body for /api/ingest
 internal sealed record IngestRequest(string Id, string Content);
+
+// Minimal request body for /api/generate
+internal sealed record GenerateRequest(string Query);

@@ -4,7 +4,7 @@ An ASP.NET Core 9 Minimal API scaffolded from the `netindex` template. Wired for
 
 ## What was scaffolded
 
-- `Program.cs` — Minimal API entry point with `AddNetIndex(...)` wiring, active Azure OpenAI + pgvector configuration, `/health`, `/ingest`, and `/query` endpoints, and a dev-only `LocalDevTenantResolver`.
+- `Program.cs` — Minimal API entry point with `AddNetIndex(...)` wiring, active Azure OpenAI + pgvector configuration, `/health`, `/api/ingest`, `/api/query`, and `/api/generate` endpoints, and a dev-only `LocalDevTenantResolver`.
 - `appsettings.json` / `appsettings.Development.json` — All four NetIndex provider sub-sections (`AzureOpenAI`, `Pgvector`, `Ollama`, `Sqlite`) with placeholder values. No real secrets are present.
 - `{name}.csproj` — SDK-style `Microsoft.NET.Sdk.Web` project referencing all six NetIndex packages.
 
@@ -72,7 +72,7 @@ dotnet run
 **Ingest a document**
 
 ```bash
-curl -X POST http://localhost:5000/ingest \
+curl -X POST http://localhost:5000/api/ingest \
   -H "Content-Type: application/json" \
   -d '{"id":"doc1","content":"NetIndex is a .NET RAG framework for building production-ready retrieval-augmented generation pipelines."}'
 ```
@@ -82,7 +82,7 @@ Expected response: `{"id":"doc1"}`
 **Query the pipeline**
 
 ```bash
-curl "http://localhost:5000/query?q=RAG+framework"
+curl "http://localhost:5000/api/query?q=RAG+framework"
 ```
 
 Expected response: a JSON array of matching chunks, each with `documentId`, `score`, and `text`.
@@ -90,6 +90,69 @@ Expected response: a JSON array of matching chunks, each with `documentId`, `sco
 > **Note:** Kestrel's default port may vary. Check the console output for the actual URL, or set `ASPNETCORE_URLS=http://localhost:5000` before running to pin it.
 
 > **Dev tenant resolver:** The scaffolded `LocalDevTenantResolver` allows all operations without real authentication. This is a development convenience only — replace it with a real `ITenantResolver` (e.g., `ClaimsTenantResolver`) before serving production traffic.
+
+## Sample API
+
+The three `/api/*` endpoints form the canonical RAG pipeline surface. All errors return an [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) `application/problem+json` envelope.
+
+**POST /api/ingest**
+
+```bash
+curl -X POST http://localhost:5000/api/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"id":"doc1","content":"NetIndex is a .NET RAG framework."}'
+```
+
+Expected success response (`200 OK`):
+
+```json
+{"id":"doc1"}
+```
+
+Failure example — blank `id` returns `400 Bad Request`:
+
+```json
+{
+  "type": "https://netindex.dev/errors/validation",
+  "title": "Validation failed",
+  "status": 400,
+  "detail": "Both 'id' and 'content' must be non-blank."
+}
+```
+
+All error responses follow the same RFC 7807 envelope (`type`, `title`, `status`, `detail`). Provider failures (`502`) also include a `retryable` boolean extension field.
+
+**GET /api/query**
+
+```bash
+curl "http://localhost:5000/api/query?q=RAG+framework&top=3"
+```
+
+Expected success response (`200 OK`):
+
+```json
+[
+  {"documentId":"doc1","score":0.92,"text":"NetIndex is a .NET RAG framework."}
+]
+```
+
+`top` is optional (default `5`, max `50`). Omit it to get the default number of results.
+
+**POST /api/generate**
+
+```bash
+curl -N -X POST http://localhost:5000/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{"query":"What is NetIndex?"}'
+```
+
+The `-N` flag disables curl buffering so tokens appear as they are streamed. Each line is a Server-Sent Events frame:
+
+```
+data: {"text":"NetIndex","isComplete":false,"finishReason":"Stop"}
+data: {"text":" is a","isComplete":false,"finishReason":"Stop"}
+data: {"text":" .NET RAG framework.","isComplete":true,"finishReason":"Stop"}
+```
 
 ## Run it
 
@@ -105,5 +168,4 @@ Expected response: `{"status":"Healthy"}`
 ## Next steps
 
 - Replace `LocalDevTenantResolver` with a real `ITenantResolver` before serving production traffic. See the [project README](https://github.com/M-Sahin/NetIndex/blob/main/README.md) for architecture guidance.
-- The sample endpoints will be formalized under `/api/*` with a `/generate` endpoint and structured error handling in a future update.
 - Review [CONTRIBUTING.md](https://github.com/M-Sahin/NetIndex/blob/main/CONTRIBUTING.md) for contribution guidelines.

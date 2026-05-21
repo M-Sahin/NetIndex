@@ -6,7 +6,7 @@ namespace NetIndex.Template.Tests;
 
 /// <summary>
 /// Validates the scaffolded README.md required H2 sections and local-swap narrative
-/// (AC#6, AC#9, Story 4.2 AC#4, Story 4.3 AC#5, AC#6).
+/// (AC#6, AC#9, Story 4.2 AC#4, Story 4.3 AC#5, AC#6, Story 4.4 AC#4, AC#5).
 /// </summary>
 public sealed class ReadmeContractTests
 {
@@ -49,6 +49,23 @@ public sealed class ReadmeContractTests
         }
     }
 
+    /// <summary>
+    /// Returns the text between the "Sample API" H2 heading and the next H2 heading
+    /// (or end of file). Assertions anchored to this slice cannot pass accidentally
+    /// from mentions in other sections.
+    /// </summary>
+    private static string SampleApiSection
+    {
+        get
+        {
+            var match = Regex.Match(
+                Content,
+                @"^##\s*Sample API.*?(?=^##\s|\z)",
+                RegexOptions.Multiline | RegexOptions.Singleline);
+            return match.Success ? match.Value : string.Empty;
+        }
+    }
+
     [Trait("Category", "PipelineContract")]
     [Fact]
     public void Readme_ContentFile_Exists()
@@ -63,6 +80,7 @@ public sealed class ReadmeContractTests
     [InlineData("## Configure Azure OpenAI + pgvector (default)")]
     [InlineData("## Switch to Local Development (Ollama + SQLite)")]
     [InlineData("## Zero-Config Local Quickstart")]
+    [InlineData("## Sample API")]
     [InlineData("## Run it")]
     [InlineData("## Next steps")]
     public void Readme_WhenLoaded_ContainsRequiredSection(string heading)
@@ -132,8 +150,8 @@ public sealed class ReadmeContractTests
             "local swap section must explain how to switch back to Azure + pgvector");
     }
 
-    // Story 4.3: the Zero-Config Local Quickstart section must document the end-to-end
-    // curl flow for POST /ingest and GET /query.
+    // Story 4.4: the Zero-Config Local Quickstart section must reference the
+    // updated /api/ingest and /api/query paths.
     [Trait("Category", "PipelineContract")]
     [Fact]
     public void Readme_WhenLoaded_QuickstartSectionContainsCurlExamples()
@@ -143,10 +161,10 @@ public sealed class ReadmeContractTests
 
         section.Should().Contain("curl",
             "quickstart section must contain curl examples");
-        section.Should().Contain("/ingest",
-            "quickstart section must document the /ingest endpoint");
-        section.Should().Contain("/query",
-            "quickstart section must document the /query endpoint");
+        section.Should().Contain("/api/ingest",
+            "quickstart section must document the /api/ingest endpoint");
+        section.Should().Contain("/api/query",
+            "quickstart section must document the /api/query endpoint");
         section.Should().Contain("dotnet run",
             "quickstart section must include the dotnet run step");
     }
@@ -161,5 +179,25 @@ public sealed class ReadmeContractTests
 
         section.Should().Contain("LocalDevTenantResolver",
             "quickstart section must name LocalDevTenantResolver and explain it is dev-only");
+    }
+
+    // Story 4.4: the Sample API section must contain curl examples for all three endpoints.
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void Readme_WhenLoaded_SampleApiSectionContainsThreeEndpointCurlExamples()
+    {
+        var section = SampleApiSection;
+        section.Should().NotBeEmpty("the Sample API H2 section must exist");
+
+        section.Should().Contain("POST /api/ingest",
+            "Sample API section must document POST /api/ingest");
+        section.Should().Contain("GET /api/query",
+            "Sample API section must document GET /api/query");
+        section.Should().Contain("POST /api/generate",
+            "Sample API section must document POST /api/generate");
+
+        var curlCount = Regex.Matches(section, @"\bcurl\b").Count;
+        curlCount.Should().BeGreaterThanOrEqualTo(3,
+            "Sample API section must contain at least three curl invocations (one per endpoint)");
     }
 }
