@@ -5,7 +5,7 @@ using Xunit;
 namespace NetIndex.Template.Tests;
 
 /// <summary>
-/// Validates the scaffolded Program.cs structure (AC#4, AC#9, Story 4.2 AC#1-2, Story 4.3 AC#4, AC#6).
+/// Validates the scaffolded Program.cs structure (AC#4, AC#9, Story 4.2 AC#1-2, Story 4.3 AC#4, AC#6, Story 4.4 AC#5).
 /// </summary>
 public sealed class ProgramCsContractTests
 {
@@ -188,42 +188,69 @@ public sealed class ProgramCsContractTests
             "without it, INetIndexPipeline is never registered in DI");
     }
 
-    // Story 4.3: replaced NoIngestQueryOrGenerateEndpoints with a narrower rule
-    // that allows /ingest and /query (added this story) while still forbidding
-    // /generate (Story 4.4) and /api/-prefixed routes (Story 4.4).
-    [Trait("Category", "PipelineContract")]
-    [Fact]
-    public void ProgramCs_WhenLoaded_NoGenerateOrApiPrefixedEndpoints()
-    {
-        // /generate belongs to Story 4.4 — must not appear yet.
-        var generatePattern = @"\.Map(Get|Post|Put|Delete|Patch)\s*\(\s*""/generate\b";
-        Regex.IsMatch(Content, generatePattern).Should().BeFalse(
-            "Story 4.3 must not add a /generate endpoint — that belongs to Story 4.4");
-
-        // /api/* prefixed routes belong to Story 4.4 — must not appear yet.
-        var apiPrefixPattern = @"\.Map(Get|Post|Put|Delete|Patch)\s*\(\s*""/api/";
-        Regex.IsMatch(Content, apiPrefixPattern).Should().BeFalse(
-            "Story 4.3 must not add /api/* prefixed endpoints — that belongs to Story 4.4");
-    }
-
-    // Story 4.3: the /ingest POST endpoint must be present and active.
+    // Story 4.4: the /api/ingest POST endpoint must be present and active.
     [Trait("Category", "PipelineContract")]
     [Fact]
     public void ProgramCs_WhenLoaded_ContainsActiveIngestEndpoint()
     {
-        // Match app.MapPost("/ingest" — no \b needed: the closing " terminates the route string
-        Regex.IsMatch(Content, @"^\s*app\.MapPost\(\s*""/ingest""", RegexOptions.Multiline).Should().BeTrue(
-            "Program.cs must contain an active app.MapPost(\"/ingest\", ...) endpoint");
+        Regex.IsMatch(Content, @"^\s*app\.MapPost\(\s*""/api/ingest""", RegexOptions.Multiline).Should().BeTrue(
+            "Program.cs must contain an active app.MapPost(\"/api/ingest\", ...) endpoint");
     }
 
-    // Story 4.3: the /query GET endpoint must be present and active.
+    // Story 4.4: the /api/query GET endpoint must be present and active.
     [Trait("Category", "PipelineContract")]
     [Fact]
     public void ProgramCs_WhenLoaded_ContainsActiveQueryEndpoint()
     {
-        // Match app.MapGet("/query" — no \b needed: the closing " terminates the route string
-        Regex.IsMatch(Content, @"^\s*app\.MapGet\(\s*""/query""", RegexOptions.Multiline).Should().BeTrue(
-            "Program.cs must contain an active app.MapGet(\"/query\", ...) endpoint");
+        Regex.IsMatch(Content, @"^\s*app\.MapGet\(\s*""/api/query""", RegexOptions.Multiline).Should().BeTrue(
+            "Program.cs must contain an active app.MapGet(\"/api/query\", ...) endpoint");
+    }
+
+    // Story 4.4: the /api/generate POST endpoint must be present and active.
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void ProgramCs_WhenLoaded_ContainsActiveGenerateEndpoint()
+    {
+        Regex.IsMatch(Content, @"^\s*app\.MapPost\(\s*""/api/generate""", RegexOptions.Multiline).Should().BeTrue(
+            "Program.cs must contain an active app.MapPost(\"/api/generate\", ...) endpoint");
+    }
+
+    // Story 4.4: replaces NoGenerateOrApiPrefixedEndpoints with a precise allowlist.
+    // Forbids the un-prefixed Story 4.3 routes (must be removed) and any undocumented
+    // /api/* route beyond the three canonical ones.
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void ProgramCs_WhenLoaded_NoUnprefixedOrUndocumentedApiEndpoints()
+    {
+        // The un-prefixed Story 4.3 routes must be gone.
+        Regex.IsMatch(Content, @"\.Map(Get|Post|Put|Delete|Patch)\s*\(\s*""/ingest""").Should().BeFalse(
+            "Program.cs must not contain an un-prefixed /ingest endpoint — it was replaced by /api/ingest in Story 4.4");
+
+        Regex.IsMatch(Content, @"\.Map(Get|Post|Put|Delete|Patch)\s*\(\s*""/query""").Should().BeFalse(
+            "Program.cs must not contain an un-prefixed /query endpoint — it was replaced by /api/query in Story 4.4");
+
+        // Only the three documented /api/* routes are permitted.
+        Regex.IsMatch(Content, @"app\.Map(Get|Post|Put|Delete|Patch)\s*\(\s*""/api/(?!ingest""|query""|generate"")\w+").Should().BeFalse(
+            "Program.cs must not contain undocumented /api/* endpoints — only /api/ingest, /api/query, /api/generate are permitted");
+    }
+
+    // Story 4.4: Results.Problem( must appear at least three times (one per error
+    // category: 401, 502, 500) and the canonical error type URLs must appear at
+    // least three times.
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void ProgramCs_WhenLoaded_UsesResultsProblemForErrors()
+    {
+        var problemMatches = Regex.Matches(Content, @"Results\.Problem\(");
+        problemMatches.Count.Should().BeGreaterThanOrEqualTo(3,
+            "Program.cs must use Results.Problem(...) for error handling — at least once per error category (401, 502, 500)");
+
+        // Each of the four canonical error categories must be present.
+        foreach (var category in new[] { "validation", "authorization", "provider", "internal" })
+        {
+            Content.Should().Contain($"https://netindex.dev/errors/{category}",
+                $"Program.cs must include the '{category}' error type URI");
+        }
     }
 
     // Story 4.3: an explicit non-deny-all ITenantResolver must be registered
