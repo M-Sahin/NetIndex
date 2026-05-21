@@ -6,6 +6,16 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Pgvector" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
     <ProjectReference Include="../../Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Required: BuilderExtensionsTests references PgvectorOptionsValidator directly to verify validator wiring -->
+    <InternalsVisibleTo Include="NetIndex.Storage.Pgvector.Tests" />
   </ItemGroup>
 </Project>
