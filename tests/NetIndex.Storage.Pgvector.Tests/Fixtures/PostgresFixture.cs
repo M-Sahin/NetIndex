@@ -29,10 +29,10 @@ public sealed class PostgresFixture : IAsyncLifetime, IResetable
     {
         await _container.StartAsync().ConfigureAwait(false);
         _store = CreateStore();
-        // Trigger lazy schema initialization; top=0 is a no-op that forces schema creation
-        await foreach (var _ in _store.QueryAsync(new float[TestDimensions], top: 0, CancellationToken.None).ConfigureAwait(false))
-        {
-        }
+        // Trigger lazy schema initialization so ResetAsync's TRUNCATE has a table to target.
+        // DeleteAsync is the only public method that always reaches EnsureInitializedAsync:
+        // QueryAsync(top: 0) short-circuits before init, and UpsertAsync(empty) early-returns before init.
+        await _store.DeleteAsync("__warmup__", CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
