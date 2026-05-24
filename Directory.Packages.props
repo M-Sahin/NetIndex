@@ -36,6 +36,11 @@
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="9.0.5" />
     <PackageVersion Include="sqlite-vec" Version="0.1.7-alpha.2.1" />
 
+    <!-- pgvector storage -->
+    <PackageVersion Include="Npgsql" Version="9.0.3" />
+    <PackageVersion Include="Pgvector" Version="0.3.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.12.0" />
+
     <!-- OllamaSharp for Ollama provider -->
     <PackageVersion Include="OllamaSharp" Version="5.0.1" />
 
