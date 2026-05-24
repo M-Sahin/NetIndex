@@ -269,6 +269,10 @@ public sealed class PgvectorVectorStore : IVectorStore, IAsyncDisposable
                 await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
 
+            // The data source's type catalog was snapshotted when this connection opened —
+            // before the vector extension existed. Refresh so Pgvector.Vector parameters can be bound.
+            await connection.ReloadTypesAsync().ConfigureAwait(false);
+
             await using (var cmd = connection.CreateCommand())
             {
                 cmd.CommandText = $"""
