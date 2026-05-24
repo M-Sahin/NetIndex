@@ -298,8 +298,8 @@ public sealed class PgvectorVectorStore : IVectorStore, IAsyncDisposable
                 var atttypmod = (int?)await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
                 if (atttypmod.HasValue && atttypmod.Value != -1)
                 {
-                    // pgvector stores dimension as (atttypmod - 4)
-                    var storedDimensions = atttypmod.Value - 4;
+                    // pgvector stores the raw dimension in atttypmod (see vector_typmod_in in pgvector source)
+                    var storedDimensions = atttypmod.Value;
                     if (storedDimensions != _dimensions)
                     {
                         throw new NetIndexConfigurationException(
