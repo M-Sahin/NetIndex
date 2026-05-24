@@ -6,6 +6,19 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Test project needs direct access to NetIndexTenantOptionsValidator (internal sealed) -->
+    <InternalsVisibleTo Include="NetIndex.AspNetCore.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../../Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj" />
     <ProjectReference Include="../../Core/NetIndex.Core/NetIndex.Core.csproj" />
   </ItemGroup>
