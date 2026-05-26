@@ -17,4 +17,10 @@
   <ItemGroup>
     <InternalsVisibleTo Include="NetIndex.Providers.AzureOpenAI.Tests" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex Azure OpenAI Provider</Title>
+    <Description>Azure OpenAI embedding and chat-completion provider for NetIndex, with managed-identity support, retry logic, and activity tracing.</Description>
+    <PackageTags>rag;netindex;azure;openai;embedding;chat;llm</PackageTags>
+  </PropertyGroup>
 </Project>

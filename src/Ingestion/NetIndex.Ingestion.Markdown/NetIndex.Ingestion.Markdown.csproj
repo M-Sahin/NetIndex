@@ -11,4 +11,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex Markdown Ingestion</Title>
+    <Description>Markdown document loader for NetIndex, stripping front-matter and converting Markdown content to plain text for embedding.</Description>
+    <PackageTags>rag;netindex;ingestion;markdown</PackageTags>
+  </PropertyGroup>
 </Project>

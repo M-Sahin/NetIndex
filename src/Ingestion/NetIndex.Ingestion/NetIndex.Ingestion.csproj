@@ -12,4 +12,10 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex Ingestion</Title>
+    <Description>Document chunking strategies and ingestion pipeline extensions for NetIndex, including sliding-window and sentence-boundary chunking.</Description>
+    <PackageTags>rag;netindex;ingestion;chunking</PackageTags>
+  </PropertyGroup>
 </Project>

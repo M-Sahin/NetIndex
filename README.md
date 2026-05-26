@@ -176,6 +176,10 @@ See [templates/NetIndex.Template/content/NetIndex.Template/README.md](templates/
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). All PRs run the full contract + architecture test gate before merge.
 
+## Releasing
+
+See [PUBLISHING.md](PUBLISHING.md) for the tag-driven publish flow, dry-run instructions, required secrets, versioning policy, and the post-publish smoke gate.
+
 ## License
 
 [Apache-2.0](LICENSE) — core packages and all tests.

@@ -22,4 +22,10 @@
     <ProjectReference Include="../../Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj" />
     <ProjectReference Include="../../Core/NetIndex.Core/NetIndex.Core.csproj" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex ASP.NET Core Integration</Title>
+    <Description>ASP.NET Core middleware and DI extensions for NetIndex tenant isolation, claim-header forwarding, and request-scoped resolver configuration.</Description>
+    <PackageTags>rag;netindex;aspnetcore;middleware;tenant</PackageTags>
+  </PropertyGroup>
 </Project>

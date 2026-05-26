@@ -12,4 +12,10 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex In-Memory Vector Store</Title>
+    <Description>In-memory vector store for NetIndex, ideal for testing and single-process workloads with cosine similarity search.</Description>
+    <PackageTags>rag;netindex;vector-store;in-memory</PackageTags>
+  </PropertyGroup>
 </Project>

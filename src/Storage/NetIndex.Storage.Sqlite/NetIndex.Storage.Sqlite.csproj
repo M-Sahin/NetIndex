@@ -14,4 +14,10 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex SQLite Vector Store</Title>
+    <Description>SQLite-backed vector store for NetIndex using sqlite-vec, providing zero-dependency local persistence without requiring a database server.</Description>
+    <PackageTags>rag;netindex;vector-store;sqlite</PackageTags>
+  </PropertyGroup>
 </Project>

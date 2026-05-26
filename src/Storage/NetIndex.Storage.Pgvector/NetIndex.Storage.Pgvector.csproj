@@ -18,4 +18,10 @@
     <!-- Required: BuilderExtensionsTests references PgvectorOptionsValidator directly to verify validator wiring -->
     <InternalsVisibleTo Include="NetIndex.Storage.Pgvector.Tests" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex pgvector Storage</Title>
+    <Description>PostgreSQL pgvector storage backend for NetIndex, supporting HNSW indexing and multi-tenant chunk isolation.</Description>
+    <PackageTags>rag;netindex;vector-store;pgvector;postgresql</PackageTags>
+  </PropertyGroup>
 </Project>

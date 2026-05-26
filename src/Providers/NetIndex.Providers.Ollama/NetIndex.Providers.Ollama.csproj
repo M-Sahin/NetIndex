@@ -16,4 +16,10 @@
   <ItemGroup>
     <InternalsVisibleTo Include="NetIndex.Providers.Ollama.Tests" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex Ollama Provider</Title>
+    <Description>Ollama embedding and streaming chat provider for NetIndex, enabling fully local LLM inference with no cloud dependency.</Description>
+    <PackageTags>rag;netindex;ollama;embedding;chat;llm;local</PackageTags>
+  </PropertyGroup>
 </Project>
