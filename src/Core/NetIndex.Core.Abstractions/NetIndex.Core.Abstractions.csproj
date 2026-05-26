@@ -8,4 +8,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex Core Abstractions</Title>
+    <Description>Core contracts and interfaces for the NetIndex RAG framework, including IEmbeddingGenerator, IVectorStore, IChatClient, and ITenantResolver.</Description>
+    <PackageTags>rag;netindex;core;abstractions</PackageTags>
+  </PropertyGroup>
 </Project>

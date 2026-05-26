@@ -4,10 +4,14 @@
     <Title>NetIndex Prefix Reservation</Title>
     <Description>Placeholder package used to reserve the NetIndex.* package prefix on NuGet.org.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>rag;netindex;prefix-reservation</PackageTags>
     <IsPackable>true</IsPackable>
+    <SkipGlobalReadmeInclude>true</SkipGlobalReadmeInclude>
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <NoWarn>$(NoWarn);NU5128;NU5017</NoWarn>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU5017</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>

@@ -16,12 +16,24 @@
   <!-- Package metadata -->
   <PropertyGroup>
     <PackageProjectUrl>https://github.com/M-Sahin/NetIndex</PackageProjectUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/M-Sahin/NetIndex</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <Authors>Murat</Authors>
     <Version>0.9.1</Version>
     <Description>NetIndex - LlamaIndex for .NET, enterprise-first RAG framework</Description>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!-- Declare PackageReadmeFile when a per-project README.md exists (the actual None Include lives in
+       Directory.Build.targets so it runs after project files, avoiding double-include with projects
+       that manage their own README packaging — see SkipGlobalReadmeInclude). -->
+  <PropertyGroup Condition="Exists('$(MSBuildProjectDirectory)/README.md') AND '$(IsPackable)' != 'false'">
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <!-- xunit.runner.json for all test projects -->

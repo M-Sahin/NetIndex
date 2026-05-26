@@ -13,4 +13,10 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex DOCX Ingestion</Title>
+    <Description>Word document (.docx) loader for NetIndex using OpenXML, extracting paragraph text for downstream chunking and embedding.</Description>
+    <PackageTags>rag;netindex;ingestion;docx;word</PackageTags>
+  </PropertyGroup>
 </Project>

@@ -1,9 +1,20 @@
 <Project>
   <!-- Shared analyzer packages for all projects -->
-  
+
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" PrivateAssets="all" />
     <PackageReference Include="AsyncFixer" PrivateAssets="all" />
     <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- SourceLink: embed GitHub source URLs in PDBs for production packages only -->
+  <ItemGroup Condition="'$(IsTestProject)' != 'true' AND '$(IsPackable)' != 'false'">
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Pack per-project README.md. Runs in .targets so it evaluates after the project file,
+       preventing double-include with projects that manage their own README packaging (SkipGlobalReadmeInclude=true). -->
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)/README.md') AND '$(IsPackable)' != 'false' AND '$(SkipGlobalReadmeInclude)' != 'true'">
+    <None Include="$(MSBuildProjectDirectory)/README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

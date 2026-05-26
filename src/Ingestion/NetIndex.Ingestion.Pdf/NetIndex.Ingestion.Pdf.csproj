@@ -13,4 +13,10 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex PDF Ingestion</Title>
+    <Description>PDF document loader for NetIndex using PdfPig, extracting text page-by-page for downstream chunking and embedding.</Description>
+    <PackageTags>rag;netindex;ingestion;pdf</PackageTags>
+  </PropertyGroup>
 </Project>

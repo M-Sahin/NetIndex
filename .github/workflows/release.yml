@@ -4,15 +4,30 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Push packages to NuGet.org'
+        type: boolean
+        default: false
+      version-suffix:
+        description: 'Optional pre-release suffix (e.g. rc.1, beta.2). Appended to the version from Directory.Build.props.'
+        type: string
+        default: ''
 
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
@@ -20,47 +35,130 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Build
-        run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=true
-
-      - name: Extract version from tag
+      # Resolve the version BEFORE the build so the produced assemblies are stamped with the
+      # release version. Packing --no-build later would otherwise ship binaries marked 0.9.1.
+      - name: Resolve version
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        env:
+          # Pass the workflow_dispatch input through env (never interpolate ${{ }} directly into
+          # a run: script — that is a shell-injection vector).
+          VERSION_SUFFIX: ${{ inputs.version-suffix }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            BASE=$(grep '<Version>' Directory.Build.props | head -1 | sed -E 's/.*<Version>(.*)<\/Version>.*/\1/')
+            if [ -n "$VERSION_SUFFIX" ]; then
+              # Reject anything that is not a legal SemVer pre-release label before splicing it in.
+              if ! printf '%s' "$VERSION_SUFFIX" | grep -Eq '^[0-9A-Za-z.-]+$'; then
+                echo "::error::version-suffix '$VERSION_SUFFIX' is not a valid SemVer pre-release label (allowed: alphanumerics, '.', '-')."
+                exit 1
+              fi
+              VERSION="${BASE}-${VERSION_SUFFIX}"
+            else
+              VERSION="${BASE}"
+            fi
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not resolve a version (empty). Check the tag ref or the <Version> element in Directory.Build.props."
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Resolved version: $VERSION"
+
+      - name: Build
+        run: |
+          dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=true \
+            /p:Version=${{ steps.version.outputs.VERSION }} \
+            /p:PackageVersion=${{ steps.version.outputs.VERSION }}
 
       - name: Run pre-release tests
         run: dotnet test --no-build --configuration Release --filter "Category!=Benchmark"
 
       - name: Create NuGet packages
         run: |
-          set -e
-          dotnet pack src/Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
-          dotnet pack src/Core/NetIndex.Core/NetIndex.Core.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
-          dotnet pack src/AspNetCore/NetIndex.AspNetCore/NetIndex.AspNetCore.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
-          # Pack all provider packages
-          dotnet pack src/Providers/NetIndex.Providers.Ollama/NetIndex.Providers.Ollama.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
-          dotnet pack src/Providers/NetIndex.Providers.OpenAI/NetIndex.Providers.OpenAI.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
-          dotnet pack src/Providers/NetIndex.Providers.AzureOpenAI/NetIndex.Providers.AzureOpenAI.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
-          # Pack all storage packages
-          dotnet pack src/Storage/NetIndex.Storage.InMemory/NetIndex.Storage.InMemory.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
-          dotnet pack src/Storage/NetIndex.Storage.Sqlite/NetIndex.Storage.Sqlite.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
-          dotnet pack src/Storage/NetIndex.Storage.Pgvector/NetIndex.Storage.Pgvector.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
-          # Pack all ingestion packages
-          dotnet pack src/Ingestion/NetIndex.Ingestion.Pdf/NetIndex.Ingestion.Pdf.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
-          dotnet pack src/Ingestion/NetIndex.Ingestion.Docx/NetIndex.Ingestion.Docx.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
-          dotnet pack src/Ingestion/NetIndex.Ingestion.Tesseract/NetIndex.Ingestion.Tesseract.csproj -c Release -o nupkg /p:Version=${{ steps.version.outputs.VERSION }} /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+          dotnet pack NetIndex.sln --no-build --configuration Release --output nupkg \
+            /p:Version=${{ steps.version.outputs.VERSION }} \
+            /p:PackageVersion=${{ steps.version.outputs.VERSION }}
+          # Symbol packages (.snupkg) are generated automatically because Directory.Build.props
+          # sets <IncludeSymbols>true</IncludeSymbols> and <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+          # for all library projects. Projects with IncludeBuildOutput=false (prefix-reservation,
+          # template) set <IncludeSymbols>false</IncludeSymbols> to suppress empty snupkg creation.
 
-      # TODO: Add package signing step when signing certificate is available
-      # Reference: NFR2 - Packages must be signed with NuGet signing certificate
-      # Example: dotnet msbuild -t:Sign -p:SigningCertificate=${{ secrets.NUSPEC_SIGNING_CERTIFICATE }} -p:SigningPassword=${{ secrets.NUSPEC_SIGNING_PASSWORD }} nupkg/*.nupkg
-
-      - name: Publish to NuGet (when ready)
-        # Requires NuGet API key in secrets.NUGET_API_KEY
-        if: false # Disabled until ready for real releases
+      - name: Validate package metadata
         run: |
-          dotnet nuget push nupkg/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json
+          set -e
+          shopt -s nullglob
+          ERRORS=0
+          PKGS=(nupkg/*.nupkg)
+          if [ "${#PKGS[@]}" -eq 0 ]; then
+            echo "::error::No .nupkg files were produced by the pack step — nothing to validate."
+            exit 1
+          fi
+          echo "Validating ${#PKGS[@]} package(s)."
+          for nupkg in "${PKGS[@]}"; do
+            # Skip symbol packages (legacy .symbols.nupkg format — not produced with snupkg but guard anyway)
+            [[ "$nupkg" == *.symbols.nupkg ]] && continue
+            NUSPEC=$(unzip -Z1 "$nupkg" | grep -E '\.nuspec$' | head -1)
+            CONTENT=$(unzip -p "$nupkg" "$NUSPEC")
+            echo "--- $nupkg ---"
+            for required in '<title>' '<projectUrl>' '<repository url=' '<license type="expression">Apache-2.0</license>'; do
+              if ! echo "$CONTENT" | grep -q "$required"; then
+                echo "::error::$nupkg missing $required"
+                ERRORS=$((ERRORS+1))
+              fi
+            done
+            # Description must be present, non-empty, and not the generic Directory.Build.props placeholder (AC#4)
+            if ! echo "$CONTENT" | grep -Eq '<description>[^<]+</description>'; then
+              echo "::error::$nupkg missing a non-empty <description>"
+              ERRORS=$((ERRORS+1))
+            elif echo "$CONTENT" | grep -q '<description>NetIndex - LlamaIndex for .NET, enterprise-first RAG framework</description>'; then
+              echo "::error::$nupkg uses the generic placeholder <description> — each shipped package must override it"
+              ERRORS=$((ERRORS+1))
+            fi
+            # README required for all packages except the NetIndex prefix-reservation placeholder
+            # (identified by package ID being exactly "NetIndex" with no sub-namespace)
+            PKG_ID=$(echo "$CONTENT" | grep -oP '(?<=<id>)[^<]+')
+            if [ "$PKG_ID" != "NetIndex" ] && [ "$PKG_ID" != "NetIndex.Template" ]; then
+              if ! echo "$CONTENT" | grep -q '<readme>README.md</readme>'; then
+                echo "::error::$nupkg (id=$PKG_ID) missing <readme>README.md</readme>"
+                ERRORS=$((ERRORS+1))
+              fi
+            fi
+          done
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "::error::Package metadata validation failed with $ERRORS error(s)."
+            exit 1
+          fi
+          echo "All packages passed metadata validation."
+
+      # TODO: Add package signing when a code-signing certificate is available.
+      # Deferred to follow-up signing story — see deferred-work.md.
+      # Example: dotnet msbuild -t:Sign -p:SigningCertificate=${{ secrets.SIGNING_CERT }} nupkg/*.nupkg
+
+      - name: Guard NuGet API key
+        if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish == true) }}
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "::error::NUGET_API_KEY secret is missing — release pipeline cannot push to nuget.org. Configure the secret under repo Settings → Secrets → Actions."
+            exit 1
+          fi
+
+      - name: Publish to NuGet
+        if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish == true) }}
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push 'nupkg/*.nupkg' \
+            -k "$NUGET_API_KEY" \
+            -s https://api.nuget.org/v3/index.json \
+            --skip-duplicate
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ steps.version.outputs.VERSION }}
@@ -70,7 +168,9 @@ jobs:
             See CHANGELOG.md for changes in this release.
           draft: false
           prerelease: false
-          files: nupkg/*.nupkg
+          files: |
+            nupkg/*.nupkg
+            nupkg/*.snupkg
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -78,3 +178,40 @@ jobs:
         with:
           name: nupkg
           path: nupkg/
+
+  smoke-test:
+    name: Post-publish smoke test
+    runs-on: ubuntu-latest
+    needs: release
+    if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish == true) }}
+
+    steps:
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Wait for NuGet.org index propagation and install template
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          echo "Waiting for NetIndex.Template::$VERSION to appear on NuGet.org (up to 5 min)..."
+          SECONDS_ELAPSED=0
+          until dotnet new install "NetIndex.Template::$VERSION" 2>/dev/null; do
+            if [ "$SECONDS_ELAPSED" -gt 300 ]; then
+              echo "::error::Timed out waiting for NetIndex.Template::$VERSION on NuGet.org after 5 minutes."
+              exit 1
+            fi
+            echo "Not yet available — retrying in 20s (${SECONDS_ELAPSED}s elapsed)..."
+            sleep 20
+            SECONDS_ELAPSED=$((SECONDS_ELAPSED + 20))
+          done
+          echo "Template installed successfully."
+
+      - name: Scaffold and restore smoke project
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          dotnet new netindex -n SmokeTest -o /tmp/smoke --verbosity normal
+          cd /tmp/smoke
+          dotnet restore --verbosity normal
+          echo "Smoke test passed — template scaffolds and restores cleanly from NuGet.org."

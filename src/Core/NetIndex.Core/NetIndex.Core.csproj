@@ -12,4 +12,10 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex Core</Title>
+    <Description>Core pipeline orchestration for NetIndex: wires together embedding, vector search, chunking, and generation into the INetIndexPipeline lifecycle.</Description>
+    <PackageTags>rag;netindex;core;pipeline</PackageTags>
+  </PropertyGroup>
 </Project>

@@ -10,3 +10,5 @@ If you are looking for actual functionality, use one of the concrete packages su
 - `NetIndex.Core.Abstractions`
 - `NetIndex.Storage.Sqlite`
 - `NetIndex.Providers.Ollama`
+
+[Full documentation and source →](https://github.com/M-Sahin/NetIndex#readme)

@@ -8,4 +8,10 @@
   <ItemGroup>
     <ProjectReference Include="../../Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex Tesseract OCR Ingestion</Title>
+    <Description>Tesseract OCR document loader for NetIndex, extracting text from images and scanned documents for embedding.</Description>
+    <PackageTags>rag;netindex;ingestion;ocr;tesseract</PackageTags>
+  </PropertyGroup>
 </Project>

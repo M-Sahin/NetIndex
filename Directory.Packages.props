@@ -25,6 +25,9 @@
     <PackageVersion Include="NSubstitute" Version="4.4.0" />
     <PackageVersion Include="FluentAssertions" Version="6.12.0" />
 
+    <!-- Source linking -->
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.300" />
+
     <!-- Diagnostics & Analysis -->
     <PackageVersion Include="System.Diagnostics.DiagnosticSource" Version="9.0.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="9.0.0" />
