@@ -75,6 +75,28 @@ jobs:
       - name: Run pre-release tests
         run: dotnet test --no-build --configuration Release --filter "Category!=Benchmark"
 
+      # Sync the template's default NetIndexVersion to the release version before packing.
+      # The repo-committed defaultValue stays "0.9.1" for deterministic local builds;
+      # consumers who install NetIndex.Template::X get a project pinned to X by default.
+      - name: Sync template default version before pack
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          TEMPLATE_JSON=templates/NetIndex.Template/content/NetIndex.Template/.template.config/template.json
+          # Match whatever the committed defaultValue currently is — not a hardcoded 0.9.1 — so a
+          # future base-version bump can't turn this into a silent no-op (sed exits 0 on zero matches).
+          # Use '#' as the s### delimiter; SemVer versions never contain '#'. $VERSION comes via env:,
+          # not ${{ }} interpolation, so it is never spliced into the workflow's shell text.
+          sed -i -E "s#(\"defaultValue\": \")[^\"]*(\")#\1${VERSION}\2#" "$TEMPLATE_JSON"
+          # Fail loudly if the substitution did not land — otherwise the packed template would ship
+          # the wrong default version and the smoke job (which passes --NetIndexVersion explicitly)
+          # would not catch it.
+          if ! grep -q "\"defaultValue\": \"${VERSION}\"" "$TEMPLATE_JSON"; then
+            echo "::error::Template defaultValue sync failed — expected \"defaultValue\": \"${VERSION}\" in ${TEMPLATE_JSON}."
+            exit 1
+          fi
+          echo "Template default NetIndexVersion synced to ${VERSION}."
+
       - name: Create NuGet packages
         run: |
           dotnet pack NetIndex.sln --no-build --configuration Release --output nupkg \
@@ -211,7 +233,21 @@ jobs:
         env:
           VERSION: ${{ needs.release.outputs.version }}
         run: |
-          dotnet new netindex -n SmokeTest -o /tmp/smoke --verbosity normal
+          # Pass --NetIndexVersion so the scaffolded project references the just-published version,
+          # not the repo-committed default (0.9.1). This closes the false-positive smoke gate.
+          dotnet new netindex -n SmokeTest -o /tmp/smoke --NetIndexVersion "$VERSION" --verbosity normal
           cd /tmp/smoke
-          dotnet restore --verbosity normal
+          # NuGet.org indexes the template and its sibling dependency packages independently.
+          # Retry dotnet restore to absorb the dependency-package index-propagation race.
+          echo "Restoring SmokeTest (NetIndex packages @ $VERSION) — retrying up to 5 min..."
+          SECONDS_ELAPSED=0
+          until dotnet restore --verbosity normal; do
+            if [ "$SECONDS_ELAPSED" -gt 300 ]; then
+              echo "::error::Timed out waiting for NetIndex dependency packages @ $VERSION on NuGet.org after 5 minutes."
+              exit 1
+            fi
+            echo "Restore failed — retrying in 20s (${SECONDS_ELAPSED}s elapsed)..."
+            sleep 20
+            SECONDS_ELAPSED=$((SECONDS_ELAPSED + 20))
+          done
           echo "Smoke test passed — template scaffolds and restores cleanly from NuGet.org."

@@ -8,16 +8,16 @@
 
   <ItemGroup>
     <!-- NetIndex core packages -->
-    <PackageReference Include="NetIndex.Core" Version="0.9.1" />
-    <PackageReference Include="NetIndex.AspNetCore" Version="0.9.1" />
+    <PackageReference Include="NetIndex.Core" Version="NETINDEX_PKG_VERSION" />
+    <PackageReference Include="NetIndex.AspNetCore" Version="NETINDEX_PKG_VERSION" />
 
     <!-- Enterprise path: Azure OpenAI + pgvector (active by default) -->
-    <PackageReference Include="NetIndex.Providers.AzureOpenAI" Version="0.9.1" />
-    <PackageReference Include="NetIndex.Storage.Pgvector" Version="0.9.1" />
+    <PackageReference Include="NetIndex.Providers.AzureOpenAI" Version="NETINDEX_PKG_VERSION" />
+    <PackageReference Include="NetIndex.Storage.Pgvector" Version="NETINDEX_PKG_VERSION" />
 
     <!-- Local dev path: Ollama + SQLite (swap block, commented out by default) -->
-    <PackageReference Include="NetIndex.Providers.Ollama" Version="0.9.1" />
-    <PackageReference Include="NetIndex.Storage.Sqlite" Version="0.9.1" />
+    <PackageReference Include="NetIndex.Providers.Ollama" Version="NETINDEX_PKG_VERSION" />
+    <PackageReference Include="NetIndex.Storage.Sqlite" Version="NETINDEX_PKG_VERSION" />
   </ItemGroup>
 
 </Project>
