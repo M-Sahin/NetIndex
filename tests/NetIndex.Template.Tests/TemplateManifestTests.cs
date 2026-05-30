@@ -89,4 +89,22 @@ public sealed class TemplateManifestTests
         tags.GetProperty("language").GetString().Should().Be("C#");
         tags.GetProperty("type").GetString().Should().Be("project");
     }
+
+    [Trait("Category", "PipelineContract")]
+    [Fact]
+    public void TemplateJson_WhenLoaded_DeclaresNetIndexVersionSymbol()
+    {
+        // Verifies the dotnet-new symbol that drives package-version substitution at scaffold time.
+        using var doc = JsonDocument.Parse(File.ReadAllText(TemplateJsonPath));
+        doc.RootElement.TryGetProperty("symbols", out var symbols).Should().BeTrue(
+            "template.json must have a symbols block for NetIndexVersion substitution");
+        symbols.TryGetProperty("NetIndexVersion", out var sym).Should().BeTrue(
+            "symbols must contain NetIndexVersion");
+        sym.GetProperty("type").GetString().Should().Be("parameter");
+        sym.GetProperty("datatype").GetString().Should().Be("string");
+        sym.GetProperty("replaces").GetString().Should().Be("NETINDEX_PKG_VERSION",
+            "replaces must match the sentinel token in the content csproj");
+        sym.GetProperty("defaultValue").GetString().Should().Be("0.9.1",
+            "the repo-committed default keeps 0.9.1; the release pipeline overrides at pack time");
+    }
 }

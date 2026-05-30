@@ -10,5 +10,14 @@
   "tags": {
     "language": "C#",
     "type": "project"
+  },
+  "symbols": {
+    "NetIndexVersion": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "0.9.1",
+      "replaces": "NETINDEX_PKG_VERSION",
+      "description": "The version of NetIndex packages to reference in the scaffolded project. Defaults to 0.9.1; the release pipeline overrides this to the published version at pack time."
+    }
   }
 }
