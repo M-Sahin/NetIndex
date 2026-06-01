@@ -104,4 +104,24 @@ public class NetIndexBuilderExtensionsBackgroundIngestionTests
 
         act.Should().Throw<ArgumentNullException>();
     }
+
+    /// <summary>
+    /// Calling UseBackgroundIngestion twice registers only one IConfigureOptions delegate (no accumulation)
+    /// and the first call's options win — the second call is ignored entirely.
+    /// </summary>
+    [Fact]
+    public void UseBackgroundIngestion_CalledTwice_DoesNotAccumulateAndFirstCallWins()
+    {
+        var builder = CreateBuilder();
+
+        builder.UseBackgroundIngestion(opt => opt.QueueCapacity = 50);
+        builder.UseBackgroundIngestion(opt => opt.QueueCapacity = 100);
+
+        var count = builder.Services.Count(d => d.ServiceType == typeof(IConfigureOptions<BackgroundIngestionOptions>));
+        count.Should().Be(1, "a second call must not add another Configure delegate");
+
+        using var provider = builder.Services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<BackgroundIngestionOptions>>().Value;
+        options.QueueCapacity.Should().Be(50, "first call wins; the second call is ignored");
+    }
 }

@@ -107,4 +107,23 @@ public class SqliteVectorStoreLifecycleTests
         await act.Should().ThrowAsync<ObjectDisposedException>()
             .Where(ex => ex.ObjectName == nameof(SqliteVectorStore));
     }
+
+    /// <summary>
+    /// Enumerator obtained before disposal throws the store's own ObjectDisposedException on
+    /// first MoveNextAsync — not the raw SQLite one.
+    /// </summary>
+    [Fact]
+    public async Task QueryAsync_HoldEnumeratorAcrossDispose_ThrowsObjectDisposedExceptionAsync()
+    {
+        var store = CreateStore();
+        // Obtain the enumerator while the store is live (no DB call yet).
+        var enumerator = store.QueryAsync(new float[TestDimensions]).GetAsyncEnumerator();
+        await store.DisposeAsync();
+
+        // First MoveNextAsync enters the iterator body, hits ThrowIfDisposed(), and throws.
+        var act = async () => await enumerator.MoveNextAsync();
+
+        await act.Should().ThrowAsync<ObjectDisposedException>()
+            .Where(ex => ex.ObjectName == nameof(SqliteVectorStore));
+    }
 }
