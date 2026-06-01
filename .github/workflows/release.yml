@@ -86,7 +86,7 @@ jobs:
           # Match whatever the committed defaultValue currently is — not a hardcoded 0.9.1 — so a
           # future base-version bump can't turn this into a silent no-op (sed exits 0 on zero matches).
           # Use '#' as the s### delimiter; SemVer versions never contain '#'. $VERSION comes via env:,
-          # not ${{ }} interpolation, so it is never spliced into the workflow's shell text.
+          # not via expression interpolation, so it is never spliced into the workflow's shell text.
           sed -i -E "s#(\"defaultValue\": \")[^\"]*(\")#\1${VERSION}\2#" "$TEMPLATE_JSON"
           # Fail loudly if the substitution did not land — otherwise the packed template would ship
           # the wrong default version and the smoke job (which passes --NetIndexVersion explicitly)
