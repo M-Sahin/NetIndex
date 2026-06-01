@@ -21,8 +21,16 @@ public static class NetIndexBuilderExtensions
     /// <returns>The same builder for fluent chaining.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="builder"/> is null.</exception>
     /// <remarks>
+    /// <para>
     /// Also call <c>app.UseNetIndexTenant()</c> on the <c>IApplicationBuilder</c> to register the
     /// middleware that populates <c>HttpContext.Items</c> before the pipeline runs.
+    /// </para>
+    /// <para>
+    /// <strong>Idempotent (first call wins):</strong> the first call's options configuration takes
+    /// effect. Any later call to either <c>UseAspNetCoreTenant</c> overload — including the
+    /// <see cref="IConfigurationSection"/> overload — is ignored: its delegate/section is neither
+    /// accumulated nor applied as an override.
+    /// </para>
     /// </remarks>
     public static INetIndexBuilder UseAspNetCoreTenant(
         this INetIndexBuilder builder,
@@ -30,12 +38,17 @@ public static class NetIndexBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        var optionsBuilder = builder.Services.AddOptions<NetIndexTenantOptions>();
-        if (configure is not null)
+        // Idempotency guard: options delegates accumulate with each call; allow only one registration.
+        if (!builder.Services.Any(d => d.ServiceType == typeof(AspNetCoreTenantOptionsMarker)))
         {
-            optionsBuilder.Configure(configure);
+            builder.Services.AddSingleton<AspNetCoreTenantOptionsMarker>();
+            var optionsBuilder = builder.Services.AddOptions<NetIndexTenantOptions>();
+            if (configure is not null)
+            {
+                optionsBuilder.Configure(configure);
+            }
+            optionsBuilder.ValidateOnStart();
         }
-        optionsBuilder.ValidateOnStart();
 
         builder.Services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IValidateOptions<NetIndexTenantOptions>, NetIndexTenantOptionsValidator>());
@@ -53,8 +66,15 @@ public static class NetIndexBuilderExtensions
     /// <returns>The same builder for fluent chaining.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="builder"/> or <paramref name="section"/> is null.</exception>
     /// <remarks>
+    /// <para>
     /// Also call <c>app.UseNetIndexTenant()</c> on the <c>IApplicationBuilder</c> to register the
     /// middleware that populates <c>HttpContext.Items</c> before the pipeline runs.
+    /// </para>
+    /// <para>
+    /// <strong>Idempotent (first call wins):</strong> the first call's options configuration takes
+    /// effect. Any later call to either <c>UseAspNetCoreTenant</c> overload — including the delegate
+    /// overload — is ignored: its delegate/section is neither accumulated nor applied as an override.
+    /// </para>
     /// </remarks>
     public static INetIndexBuilder UseAspNetCoreTenant(
         this INetIndexBuilder builder,
@@ -63,9 +83,14 @@ public static class NetIndexBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(section);
 
-        builder.Services.AddOptions<NetIndexTenantOptions>()
-            .Bind(section)
-            .ValidateOnStart();
+        // Idempotency guard: options delegates accumulate with each call; allow only one registration.
+        if (!builder.Services.Any(d => d.ServiceType == typeof(AspNetCoreTenantOptionsMarker)))
+        {
+            builder.Services.AddSingleton<AspNetCoreTenantOptionsMarker>();
+            builder.Services.AddOptions<NetIndexTenantOptions>()
+                .Bind(section)
+                .ValidateOnStart();
+        }
 
         builder.Services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IValidateOptions<NetIndexTenantOptions>, NetIndexTenantOptionsValidator>());
@@ -84,12 +109,28 @@ public static class NetIndexBuilderExtensions
     /// <returns>The same builder for fluent chaining.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="builder"/> is null.</exception>
     /// <remarks>
+    /// <para>
     /// Inject <see cref="IIngestionQueue"/> into a request handler and call
     /// <c>EnqueueAsync(document)</c> to queue work; the hosted service ingests it in the background.
     /// The queue captures the current request's tenant context (as populated by
     /// <c>UseAspNetCoreTenant</c>) and replays it during background ingestion. A custom
     /// <see cref="ITenantResolver"/> that does not read <c>HttpContext.Items</c> must be
     /// background-safe on its own.
+    /// </para>
+    /// <para>
+    /// <strong>Shutdown semantics (v1, at-most-once):</strong> The backing queue is in-memory and
+    /// non-durable. When the host stops, the <c>stoppingToken</c> is cancelled: the in-flight
+    /// document's <c>IngestAsync</c> is cancelled mid-operation, and any items still queued are
+    /// silently dropped. There is no compensation, no retry on restart, and no durability guarantee
+    /// across process restarts. Operators must tolerate the possibility of a document being lost on
+    /// unplanned shutdown without having been fully ingested.
+    /// </para>
+    /// <para>
+    /// <strong>Idempotent (first call wins):</strong> the first call's options configuration takes
+    /// effect. Any later call to either <c>UseBackgroundIngestion</c> overload — including the
+    /// <see cref="IConfigurationSection"/> overload — is ignored: its delegate/section is neither
+    /// accumulated nor applied as an override.
+    /// </para>
     /// </remarks>
     public static INetIndexBuilder UseBackgroundIngestion(
         this INetIndexBuilder builder,
@@ -97,12 +138,17 @@ public static class NetIndexBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        var optionsBuilder = builder.Services.AddOptions<BackgroundIngestionOptions>();
-        if (configure is not null)
+        // Idempotency guard: options delegates accumulate with each call; allow only one registration.
+        if (!builder.Services.Any(d => d.ServiceType == typeof(BackgroundIngestionOptionsMarker)))
         {
-            optionsBuilder.Configure(configure);
+            builder.Services.AddSingleton<BackgroundIngestionOptionsMarker>();
+            var optionsBuilder = builder.Services.AddOptions<BackgroundIngestionOptions>();
+            if (configure is not null)
+            {
+                optionsBuilder.Configure(configure);
+            }
+            optionsBuilder.ValidateOnStart();
         }
-        optionsBuilder.ValidateOnStart();
 
         RegisterBackgroundIngestionServices(builder.Services);
 
@@ -118,8 +164,24 @@ public static class NetIndexBuilderExtensions
     /// <returns>The same builder for fluent chaining.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="builder"/> or <paramref name="section"/> is null.</exception>
     /// <remarks>
+    /// <para>
     /// Inject <see cref="IIngestionQueue"/> into a request handler and call
     /// <c>EnqueueAsync(document)</c> to queue work; the hosted service ingests it in the background.
+    /// </para>
+    /// <para>
+    /// <strong>Shutdown semantics (v1, at-most-once):</strong> The backing queue is in-memory and
+    /// non-durable. When the host stops, the <c>stoppingToken</c> is cancelled: the in-flight
+    /// document's <c>IngestAsync</c> is cancelled mid-operation, and any items still queued are
+    /// silently dropped. There is no compensation, no retry on restart, and no durability guarantee
+    /// across process restarts. Operators must tolerate the possibility of a document being lost on
+    /// unplanned shutdown without having been fully ingested.
+    /// </para>
+    /// <para>
+    /// <strong>Idempotent (first call wins):</strong> the first call's options configuration takes
+    /// effect. Any later call to either <c>UseBackgroundIngestion</c> overload — including the
+    /// delegate overload — is ignored: its delegate/section is neither accumulated nor applied as
+    /// an override.
+    /// </para>
     /// </remarks>
     public static INetIndexBuilder UseBackgroundIngestion(
         this INetIndexBuilder builder,
@@ -128,9 +190,14 @@ public static class NetIndexBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(section);
 
-        builder.Services.AddOptions<BackgroundIngestionOptions>()
-            .Bind(section)
-            .ValidateOnStart();
+        // Idempotency guard: options delegates accumulate with each call; allow only one registration.
+        if (!builder.Services.Any(d => d.ServiceType == typeof(BackgroundIngestionOptionsMarker)))
+        {
+            builder.Services.AddSingleton<BackgroundIngestionOptionsMarker>();
+            builder.Services.AddOptions<BackgroundIngestionOptions>()
+                .Bind(section)
+                .ValidateOnStart();
+        }
 
         RegisterBackgroundIngestionServices(builder.Services);
 
@@ -145,4 +212,10 @@ public static class NetIndexBuilderExtensions
         services.TryAddSingleton<IIngestionQueue, ChannelIngestionQueue>();
         services.AddHostedService<IngestionHostedService>();
     }
+
+    // Marker types used as idempotency tokens for options-registration guards.
+    // TryAddSingleton semantics don't cover AddOptions().Configure() accumulation,
+    // so we use a dedicated marker per extension method family.
+    private sealed class AspNetCoreTenantOptionsMarker { }
+    private sealed class BackgroundIngestionOptionsMarker { }
 }

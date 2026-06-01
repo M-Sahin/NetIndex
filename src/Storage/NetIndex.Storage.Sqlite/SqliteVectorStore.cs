@@ -80,6 +80,10 @@ public sealed class SqliteVectorStore : IVectorStore, IAsyncDisposable
 
             transaction.Commit();
         }
+        catch (ObjectDisposedException) when (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(SqliteVectorStore));
+        }
         catch (SqliteException ex)
         {
             throw new NetIndexStorageException(
@@ -132,6 +136,10 @@ public sealed class SqliteVectorStore : IVectorStore, IAsyncDisposable
         try
         {
             results = await ExecuteQueryAsync(queryVector, top, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException) when (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(SqliteVectorStore));
         }
         catch (SqliteException ex)
         {
@@ -213,6 +221,10 @@ public sealed class SqliteVectorStore : IVectorStore, IAsyncDisposable
             }
 
             transaction.Commit();
+        }
+        catch (ObjectDisposedException) when (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(SqliteVectorStore));
         }
         catch (SqliteException ex)
         {

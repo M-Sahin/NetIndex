@@ -440,6 +440,21 @@ public class OllamaChatClientTests
     // ── Disposal guards ───────────────────────────────────────────────────────
 
     /// <summary>
+    /// Verifies that calling DisposeAsync twice does not throw (idempotent dispose).
+    /// </summary>
+    [Fact]
+    public async Task DisposeAsync_CalledTwice_IsIdempotentAsync()
+    {
+        using var httpClient = BuildStreamingClient(ThreeChunkBody);
+        var client = new OllamaChatClient(httpClient, TestModel);
+        await client.DisposeAsync();
+
+        var act = async () => await client.DisposeAsync();
+
+        await act.Should().NotThrowAsync();
+    }
+
+    /// <summary>
     /// Verifies that enumerating after disposal throws <see cref="ObjectDisposedException"/> (AC #9).
     /// </summary>
     [Fact]

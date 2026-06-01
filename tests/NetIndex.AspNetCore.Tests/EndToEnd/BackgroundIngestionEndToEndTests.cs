@@ -53,9 +53,11 @@ public class BackgroundIngestionEndToEndTests
     {
         var stopwatch = Stopwatch.StartNew();
         var last = string.Empty;
+        var attempts = 0;
         while (stopwatch.Elapsed < TimeSpan.FromSeconds(5))
         {
             last = await produce();
+            attempts++;
             if (last.Contains("doc-1", StringComparison.Ordinal))
             {
                 return last;
@@ -64,7 +66,8 @@ public class BackgroundIngestionEndToEndTests
             await Task.Delay(50);
         }
 
-        return last;
+        throw new TimeoutException(
+            $"PollAsync: polled {attempts} times over ~5s; condition never met. Last response: '{last}'");
     }
 }
 

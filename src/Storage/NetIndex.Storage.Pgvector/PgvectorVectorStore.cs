@@ -113,6 +113,10 @@ public sealed class PgvectorVectorStore : IVectorStore, IAsyncDisposable
         {
             throw;
         }
+        catch (ObjectDisposedException) when (_disposeState != 0)
+        {
+            throw new ObjectDisposedException(nameof(PgvectorVectorStore));
+        }
         catch (Exception ex)
         {
             throw WrapStorageException(ex, "Upsert");
@@ -162,6 +166,10 @@ public sealed class PgvectorVectorStore : IVectorStore, IAsyncDisposable
         {
             throw;
         }
+        catch (ObjectDisposedException) when (_disposeState != 0)
+        {
+            throw new ObjectDisposedException(nameof(PgvectorVectorStore));
+        }
         catch (Exception ex)
         {
             throw WrapStorageException(ex, "Query");
@@ -195,6 +203,10 @@ public sealed class PgvectorVectorStore : IVectorStore, IAsyncDisposable
         catch (OperationCanceledException)
         {
             throw;
+        }
+        catch (ObjectDisposedException) when (_disposeState != 0)
+        {
+            throw new ObjectDisposedException(nameof(PgvectorVectorStore));
         }
         catch (Exception ex)
         {

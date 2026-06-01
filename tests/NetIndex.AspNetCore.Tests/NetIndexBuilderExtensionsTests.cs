@@ -118,4 +118,24 @@ public class NetIndexBuilderExtensionsTests
 
         act.Should().Throw<ArgumentNullException>();
     }
+
+    /// <summary>
+    /// Calling UseAspNetCoreTenant twice registers only one IConfigureOptions delegate (no accumulation)
+    /// and the first call's options win — the second call is ignored entirely.
+    /// </summary>
+    [Fact]
+    public void UseAspNetCoreTenant_CalledTwice_DoesNotAccumulateAndFirstCallWins()
+    {
+        var builder = CreateBuilder();
+
+        builder.UseAspNetCoreTenant(opt => opt.HeaderName = "X-Tenant-First");
+        builder.UseAspNetCoreTenant(opt => opt.HeaderName = "X-Tenant-Second");
+
+        var count = builder.Services.Count(d => d.ServiceType == typeof(IConfigureOptions<NetIndexTenantOptions>));
+        count.Should().Be(1, "a second call must not add another Configure delegate");
+
+        using var provider = builder.Services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<NetIndexTenantOptions>>().Value;
+        options.HeaderName.Should().Be("X-Tenant-First", "first call wins; the second call is ignored");
+    }
 }
