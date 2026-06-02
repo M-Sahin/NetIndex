@@ -106,9 +106,11 @@ public sealed class PipelineOrchestratorTests
         mocks.MockEmbedding.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new float[384]));
 
+        // Chunk must carry the tenant tag so the pipeline's tenant filter passes it through.
+        var tenantMeta = new Dictionary<string, string> { [RagChunkMetadata.TenantId] = "test-tenant" };
         mocks.MockStore.QueryAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(StreamSearchResultAsync(
-                new RagChunk("chunk-1", "relevant content", new float[384], "doc-1", null),
+                new RagChunk("chunk-1", "relevant content", new float[384], "doc-1", tenantMeta),
                 0.95f, "doc-1"));
 
         var results = new List<SearchResult<RagChunk>>();

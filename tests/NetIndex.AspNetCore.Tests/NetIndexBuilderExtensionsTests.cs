@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using NetIndex.AspNetCore;
 using NetIndex.AspNetCore.Options;
 using NetIndex.Core.Abstractions;
 using NSubstitute;
@@ -137,5 +138,64 @@ public class NetIndexBuilderExtensionsTests
         using var provider = builder.Services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<NetIndexTenantOptions>>().Value;
         options.HeaderName.Should().Be("X-Tenant-First", "first call wins; the second call is ignored");
+    }
+
+    // ── UseClaimsTenant ──
+
+    /// <summary>UseClaimsTenant registers IHttpContextAccessor and ITenantResolver as ClaimsTenantResolver.</summary>
+    [Fact]
+    public void UseClaimsTenant_RegistersClaimsTenantResolver()
+    {
+        var builder = CreateBuilder();
+
+        builder.UseClaimsTenant();
+
+        using var provider = builder.Services.BuildServiceProvider();
+        provider.GetService<IHttpContextAccessor>().Should().NotBeNull();
+        provider.GetService<ITenantResolver>().Should().BeOfType<ClaimsTenantResolver>();
+    }
+
+    /// <summary>Pre-registered ITenantResolver is not overridden by UseClaimsTenant (TryAddSingleton semantics).</summary>
+    [Fact]
+    public void UseClaimsTenant_TryAddSingleton_DoesNotOverridePriorResolver()
+    {
+        var builder = CreateBuilder();
+        var stub = Substitute.For<ITenantResolver>();
+        builder.Services.AddSingleton(stub);
+
+        builder.UseClaimsTenant();
+
+        using var provider = builder.Services.BuildServiceProvider();
+        provider.GetService<ITenantResolver>().Should().BeSameAs(stub);
+    }
+
+    /// <summary>
+    /// Calling UseClaimsTenant twice does not accumulate Configure delegates — the first call wins.
+    /// </summary>
+    [Fact]
+    public void UseClaimsTenant_CalledTwice_FirstCallWins()
+    {
+        var builder = CreateBuilder();
+
+        builder.UseClaimsTenant(opt => opt.TenantClaimType = "first-claim");
+        builder.UseClaimsTenant(opt => opt.TenantClaimType = "second-claim");
+
+        var configureCount = builder.Services.Count(d => d.ServiceType == typeof(IConfigureOptions<ClaimsTenantOptions>));
+        configureCount.Should().Be(1, "second call must not add another Configure delegate");
+
+        using var provider = builder.Services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<ClaimsTenantOptions>>().Value;
+        options.TenantClaimType.Should().Be("first-claim", "first call wins");
+    }
+
+    /// <summary>UseClaimsTenant returns the builder for fluent chaining.</summary>
+    [Fact]
+    public void UseClaimsTenant_ReturnsBuilderForChaining()
+    {
+        var builder = CreateBuilder();
+
+        var returned = builder.UseClaimsTenant();
+
+        returned.Should().BeSameAs(builder);
     }
 }

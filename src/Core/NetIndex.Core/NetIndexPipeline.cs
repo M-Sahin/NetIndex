@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NetIndex.Core.Abstractions;
+using NetIndex.Core.Options;
 
 namespace NetIndex.Core;
 
@@ -20,6 +21,7 @@ public sealed class NetIndexPipeline : INetIndexPipeline
     private readonly IVectorStore _vectorStore;
     private readonly IChatClient _chatClient;
     private readonly IDocumentReranker? _reranker;
+    private readonly TenantFilteringOptions _tenantFilteringOptions;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NetIndexPipeline"/> class.
@@ -30,13 +32,15 @@ public sealed class NetIndexPipeline : INetIndexPipeline
     /// <param name="vectorStore">Vector store for persistence and similarity search.</param>
     /// <param name="chatClient">Chat client for LLM generation.</param>
     /// <param name="reranker">Optional reranker for post-retrieval scoring.</param>
+    /// <param name="tenantFilteringOptions">Optional tenant filtering options. Null uses defaults.</param>
     public NetIndexPipeline(
         ITenantResolver tenantResolver,
         IChunkingStrategy? chunkingStrategy,
         IEmbeddingGenerator embeddingGenerator,
         IVectorStore vectorStore,
         IChatClient chatClient,
-        IDocumentReranker? reranker)
+        IDocumentReranker? reranker,
+        TenantFilteringOptions? tenantFilteringOptions = null)
     {
         _tenantResolver = tenantResolver ?? throw new ArgumentNullException(nameof(tenantResolver));
         _chunkingStrategy = new(() => chunkingStrategy ?? new PassThroughChunkingStrategy());
@@ -44,6 +48,7 @@ public sealed class NetIndexPipeline : INetIndexPipeline
         _vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
         _chatClient = chatClient ?? throw new ArgumentNullException(nameof(chatClient));
         _reranker = reranker;
+        _tenantFilteringOptions = tenantFilteringOptions ?? new TenantFilteringOptions();
     }
 
     /// <summary>
@@ -88,7 +93,7 @@ public sealed class NetIndexPipeline : INetIndexPipeline
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        await AuthorizeAsync(cancellationToken);
+        var tenantId = await AuthorizeAsync(cancellationToken);
 
         try
         {
@@ -113,9 +118,30 @@ public sealed class NetIndexPipeline : INetIndexPipeline
             for (var i = 0; i < chunkList.Count; i++)
             {
                 var original = chunkList[i];
+
+                // Guard against callers pre-setting the framework-reserved tenant-id key.
+                // OrdinalIgnoreCase: "NETINDEX:TENANT_ID" is just as reserved as the canonical casing.
+                if (original.Metadata is not null &&
+                    original.Metadata.Keys.Contains(RagChunkMetadata.TenantId, StringComparer.OrdinalIgnoreCase))
+                {
+                    throw new NetIndexAuthorizationException(
+                        $"Chunk metadata contains the reserved key '{RagChunkMetadata.TenantId}'. " +
+                        "This key is framework-owned and must not be set by callers.",
+                        tenantId: tenantId,
+                        requiredClaim: null,
+                        failureReason: "ReservedMetadataKeyConflict");
+                }
+
+                // Copy original metadata and stamp the tenant tag.
+                var metadata = new Dictionary<string, string>(
+                    original.Metadata ?? new Dictionary<string, string>())
+                {
+                    [RagChunkMetadata.TenantId] = tenantId,
+                };
+
                 var chunkId = $"{document.Id}_chunk_{i}";
                 enrichedChunks.Add(
-                    new RagChunk(chunkId, original.Text, embeddings[i], document.Id, original.Metadata));
+                    new RagChunk(chunkId, original.Text, embeddings[i], document.Id, metadata));
             }
 
             await _vectorStore.UpsertAsync(enrichedChunks, cancellationToken);
@@ -147,9 +173,9 @@ public sealed class NetIndexPipeline : INetIndexPipeline
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        await AuthorizeAsync(cancellationToken);
+        var tenantId = await AuthorizeAsync(cancellationToken);
 
-        await foreach (var result in ExecuteQueryAsync(query, cancellationToken)
+        await foreach (var result in ExecuteQueryAsync(query, tenantId, cancellationToken)
                        .WithCancellation(cancellationToken))
         {
             yield return result;
@@ -158,32 +184,75 @@ public sealed class NetIndexPipeline : INetIndexPipeline
 
     private async IAsyncEnumerable<SearchResult<RagChunk>> ExecuteQueryAsync(
         string query,
+        string tenantId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var queryVector = await _embeddingGenerator.GenerateAsync(query, cancellationToken);
-        var results = _vectorStore.QueryAsync(queryVector, cancellationToken: cancellationToken);
+
+        // Over-fetch to compensate for cross-tenant chunks crowding the global top-K.
+        // Clamp factor to >= 1 so a misconfigured 0 / negative value never produces fetchTop <= 0.
+        // Widen the multiply to long so a large factor cannot overflow into a negative fetchTop
+        // before MaxFetchCount caps it; the Math.Min result is always in [DefaultQueryTop, MaxFetchCount].
+        var effectiveFactor = Math.Max(1, _tenantFilteringOptions.OverFetchFactor);
+        var fetchTop = (int)Math.Min(
+            (long)TenantFilteringOptions.DefaultQueryTop * effectiveFactor,
+            TenantFilteringOptions.MaxFetchCount);
 
         if (_reranker is not null)
         {
             var resultBuffer = new List<SearchResult<RagChunk>>();
-            await foreach (var result in results.WithCancellation(cancellationToken))
+            await foreach (var result in _vectorStore
+                .QueryAsync(queryVector, fetchTop, cancellationToken)
+                .WithCancellation(cancellationToken))
             {
                 resultBuffer.Add(result);
             }
 
-            var reranked = await _reranker.RerankAsync(resultBuffer, query, cancellationToken);
-            foreach (var rerankedResult in reranked)
+            // Filter to caller's tenant before reranking — never rerank another tenant's chunks.
+            // No cap before reranking: pass the full filtered pool so the reranker can score all
+            // candidates; cap to DefaultQueryTop only after reranking (AC-1 reranker-path fix).
+            var tenantBuffer = FilterByTenant(resultBuffer, tenantId);
+            var reranked = await _reranker.RerankAsync(tenantBuffer, query, cancellationToken);
+            foreach (var rerankedResult in reranked.Take(TenantFilteringOptions.DefaultQueryTop))
             {
                 yield return rerankedResult;
             }
         }
         else
         {
-            await foreach (var result in results.WithCancellation(cancellationToken))
+            var resultBuffer = new List<SearchResult<RagChunk>>();
+            await foreach (var result in _vectorStore
+                .QueryAsync(queryVector, fetchTop, cancellationToken)
+                .WithCancellation(cancellationToken))
+            {
+                resultBuffer.Add(result);
+            }
+
+            foreach (var result in FilterByTenant(resultBuffer, tenantId)
+                         .Take(TenantFilteringOptions.DefaultQueryTop))
             {
                 yield return result;
             }
         }
+    }
+
+    private static List<SearchResult<RagChunk>> FilterByTenant(
+        List<SearchResult<RagChunk>> results,
+        string tenantId)
+    {
+        var filtered = new List<SearchResult<RagChunk>>(results.Count);
+        foreach (var result in results)
+        {
+            if (result.Item.Metadata is not null &&
+                result.Item.Metadata.TryGetValue(RagChunkMetadata.TenantId, out var tag) &&
+                string.Equals(tag, tenantId, StringComparison.Ordinal))
+            {
+                filtered.Add(result);
+            }
+        }
+
+        // Results from the store are already score-ordered; preserve that order.
+        return filtered;
     }
 
     /// <inheritdoc />
@@ -193,9 +262,9 @@ public sealed class NetIndexPipeline : INetIndexPipeline
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        await AuthorizeAsync(cancellationToken);
+        var tenantId = await AuthorizeAsync(cancellationToken);
 
-        await foreach (var chunk in ExecuteGenerateAsync(query, cancellationToken)
+        await foreach (var chunk in ExecuteGenerateAsync(query, tenantId, cancellationToken)
                        .WithCancellation(cancellationToken))
         {
             yield return chunk;
@@ -204,10 +273,11 @@ public sealed class NetIndexPipeline : INetIndexPipeline
 
     private async IAsyncEnumerable<GenerationChunk> ExecuteGenerateAsync(
         string query,
+        string tenantId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var contextChunks = new List<RagChunk>();
-        await foreach (var result in ExecuteQueryAsync(query, cancellationToken))
+        await foreach (var result in ExecuteQueryAsync(query, tenantId, cancellationToken))
         {
             contextChunks.Add(result.Item);
         }
