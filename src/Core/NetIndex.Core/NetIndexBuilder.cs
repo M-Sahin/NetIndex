@@ -130,9 +130,11 @@ public sealed class NetIndexBuilder : INetIndexBuilder
             var vectorStore = sp.GetRequiredService<IVectorStore>();
             var chatClient = sp.GetRequiredService<IChatClient>();
             var reranker = sp.GetService<IDocumentReranker>();
+            var tenantFilteringOptions = sp.GetService<TenantFilteringOptions>();
 
             return new NetIndexPipeline(
-                tenantResolver, chunkingStrategy, embeddingGenerator, vectorStore, chatClient, reranker);
+                tenantResolver, chunkingStrategy, embeddingGenerator, vectorStore, chatClient, reranker,
+                tenantFilteringOptions);
         });
         _services.TryAddSingleton<NetIndexPipeline>(sp =>
             (NetIndexPipeline)sp.GetRequiredService<INetIndexPipeline>());

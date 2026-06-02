@@ -213,9 +213,80 @@ public static class NetIndexBuilderExtensions
         services.AddHostedService<IngestionHostedService>();
     }
 
+    /// <summary>
+    /// Registers the claims-principal-based tenant resolver that reads the tenant identifier from
+    /// the authenticated <see cref="System.Security.Claims.ClaimsPrincipal"/>.
+    /// </summary>
+    /// <param name="builder">The NetIndex builder.</param>
+    /// <param name="configure">Optional delegate to configure <see cref="ClaimsTenantOptions"/>.</param>
+    /// <returns>The same builder for fluent chaining.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="builder"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// The application must authenticate requests before the NetIndex pipeline runs so that
+    /// <c>HttpContext.User.Identity.IsAuthenticated</c> is <c>true</c>.
+    /// </para>
+    /// <para>
+    /// <strong>Idempotent (first call wins):</strong> later calls to either <c>UseClaimsTenant</c>
+    /// overload are ignored.
+    /// </para>
+    /// </remarks>
+    public static INetIndexBuilder UseClaimsTenant(
+        this INetIndexBuilder builder,
+        Action<ClaimsTenantOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        if (!builder.Services.Any(d => d.ServiceType == typeof(ClaimsTenantOptionsMarker)))
+        {
+            builder.Services.AddSingleton<ClaimsTenantOptionsMarker>();
+            var optionsBuilder = builder.Services.AddOptions<ClaimsTenantOptions>();
+            if (configure is not null)
+            {
+                optionsBuilder.Configure(configure);
+            }
+        }
+
+        builder.Services.AddHttpContextAccessor();
+        builder.Services.TryAddSingleton<ITenantResolver, ClaimsTenantResolver>();
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Registers the claims-principal-based tenant resolver, binding options from a configuration section.
+    /// </summary>
+    /// <param name="builder">The NetIndex builder.</param>
+    /// <param name="section">The configuration section to bind to <see cref="ClaimsTenantOptions"/>.</param>
+    /// <returns>The same builder for fluent chaining.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="builder"/> or <paramref name="section"/> is null.</exception>
+    /// <remarks>
+    /// <strong>Idempotent (first call wins):</strong> later calls to either <c>UseClaimsTenant</c>
+    /// overload are ignored.
+    /// </remarks>
+    public static INetIndexBuilder UseClaimsTenant(
+        this INetIndexBuilder builder,
+        IConfigurationSection section)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(section);
+
+        if (!builder.Services.Any(d => d.ServiceType == typeof(ClaimsTenantOptionsMarker)))
+        {
+            builder.Services.AddSingleton<ClaimsTenantOptionsMarker>();
+            builder.Services.AddOptions<ClaimsTenantOptions>().Bind(section);
+        }
+
+        builder.Services.AddHttpContextAccessor();
+        builder.Services.TryAddSingleton<ITenantResolver, ClaimsTenantResolver>();
+
+        return builder;
+    }
+
     // Marker types used as idempotency tokens for options-registration guards.
     // TryAddSingleton semantics don't cover AddOptions().Configure() accumulation,
     // so we use a dedicated marker per extension method family.
     private sealed class AspNetCoreTenantOptionsMarker { }
     private sealed class BackgroundIngestionOptionsMarker { }
+    private sealed class ClaimsTenantOptionsMarker { }
 }

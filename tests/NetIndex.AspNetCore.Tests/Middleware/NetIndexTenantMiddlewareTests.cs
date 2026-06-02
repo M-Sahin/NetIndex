@@ -1,3 +1,5 @@
+#pragma warning disable CS1591
+using System.Net;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
@@ -67,12 +69,31 @@ public class NetIndexTenantMiddlewareTests
         context.Items[NetIndexTenantMiddleware.TenantContextKey].Should().Be("corp");
     }
 
-    /// <summary>Middleware copies prefixed headers into the claims context dictionary with keys stripped and lowercased.</summary>
+    /// <summary>Claim headers are ignored by default (AcceptClaimHeaders = false).</summary>
     [Fact]
-    public async Task NetIndexTenantMiddleware_CopiesPrefixedHeaders_IntoClaimsContextAsync()
+    public async Task NetIndexTenantMiddleware_DoesNotCopyClaimHeaders_WhenAcceptClaimHeadersIsFalseAsync()
     {
-        var middleware = CreateMiddleware();
+        var middleware = CreateMiddleware(); // default: AcceptClaimHeaders = false
         var context = new DefaultHttpContext();
+        context.Request.Headers["X-NetIndex-Claim-Role"] = "admin";
+        context.Request.Headers["X-NetIndex-Claim-Region"] = "eu";
+
+        await middleware.InvokeAsync(context);
+
+        context.Items[NetIndexTenantMiddleware.ClaimsContextKey].Should().BeNull();
+    }
+
+    /// <summary>Middleware copies prefixed headers into the claims context when AcceptClaimHeaders is true and the remote IP is trusted.</summary>
+    [Fact]
+    public async Task NetIndexTenantMiddleware_CopiesPrefixedHeaders_WhenOptedInAndTrustedProxyAsync()
+    {
+        var middleware = CreateMiddleware(configure: opts =>
+        {
+            opts.AcceptClaimHeaders = true;
+            opts.TrustedProxies.Add("127.0.0.1");
+        });
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Loopback;
         context.Request.Headers["X-NetIndex-Claim-Role"] = "admin";
         context.Request.Headers["X-NetIndex-Claim-Region"] = "eu";
 
@@ -84,16 +105,92 @@ public class NetIndexTenantMiddlewareTests
         claims.Should().ContainKey("region").WhoseValue.Should().Be("eu");
     }
 
-    /// <summary>Middleware does not set ClaimsContextKey when ClaimsHeaderPrefix is empty.</summary>
+    /// <summary>Claim headers are not forwarded when AcceptClaimHeaders is true but TrustedProxies is empty.</summary>
     [Fact]
-    public async Task NetIndexTenantMiddleware_NoClaimsItem_WhenPrefixIsEmptyAsync()
+    public async Task NetIndexTenantMiddleware_DoesNotCopyClaimHeaders_WhenNoTrustedProxiesConfiguredAsync()
     {
-        var middleware = CreateMiddleware(configure: opts => opts.ClaimsHeaderPrefix = "");
+        var middleware = CreateMiddleware(configure: opts =>
+        {
+            opts.AcceptClaimHeaders = true;
+            // TrustedProxies is empty
+        });
         var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Loopback;
         context.Request.Headers["X-NetIndex-Claim-Role"] = "admin";
 
         await middleware.InvokeAsync(context);
 
+        context.Items[NetIndexTenantMiddleware.ClaimsContextKey].Should().BeNull();
+    }
+
+    /// <summary>Middleware does not set ClaimsContextKey when ClaimsHeaderPrefix is empty.</summary>
+    [Fact]
+    public async Task NetIndexTenantMiddleware_NoClaimsItem_WhenPrefixIsEmptyAsync()
+    {
+        var middleware = CreateMiddleware(configure: opts =>
+        {
+            opts.ClaimsHeaderPrefix = "";
+            opts.AcceptClaimHeaders = true;
+            opts.TrustedProxies.Add("127.0.0.1");
+        });
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Loopback;
+        context.Request.Headers["X-NetIndex-Claim-Role"] = "admin";
+
+        await middleware.InvokeAsync(context);
+
+        context.Items[NetIndexTenantMiddleware.ClaimsContextKey].Should().BeNull();
+    }
+
+    /// <summary>Multi-value tenant header records a malformed marker.</summary>
+    [Fact]
+    public async Task NetIndexTenantMiddleware_MultiValueTenantHeader_RecordsMalformedMarkerAsync()
+    {
+        var middleware = CreateMiddleware();
+        var context = new DefaultHttpContext();
+        context.Request.Headers["X-Tenant-Id"] = new Microsoft.Extensions.Primitives.StringValues(["acme", "evil"]);
+
+        await middleware.InvokeAsync(context);
+
+        context.Items[NetIndexTenantMiddleware.MalformedTenantKey].Should().Be("MultiValueTenantHeader");
+        context.Items[NetIndexTenantMiddleware.TenantContextKey].Should().BeNull();
+    }
+
+    /// <summary>Single tenant header value is trimmed of surrounding whitespace.</summary>
+    [Fact]
+    public async Task NetIndexTenantMiddleware_TrimsSurroundingWhitespace_FromTenantHeaderAsync()
+    {
+        var middleware = CreateMiddleware();
+        var context = new DefaultHttpContext();
+        context.Request.Headers["X-Tenant-Id"] = "  acme  ";
+
+        await middleware.InvokeAsync(context);
+
+        context.Items[NetIndexTenantMiddleware.TenantContextKey].Should().Be("acme");
+    }
+
+    /// <summary>
+    /// Claim-key collision: HTTP coalesces case-variant headers (X-NetIndex-Claim-Role + X-NetIndex-Claim-ROLE)
+    /// into one entry with multiple values. Middleware detects the multi-value and records a malformed marker.
+    /// </summary>
+    [Fact]
+    public async Task NetIndexTenantMiddleware_ClaimKeyCollision_RecordsMalformedMarkerAsync()
+    {
+        var middleware = CreateMiddleware(configure: opts =>
+        {
+            opts.AcceptClaimHeaders = true;
+            opts.TrustedProxies.Add("127.0.0.1");
+        });
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Loopback;
+        // Simulate what HTTP does when both X-NetIndex-Claim-Role and X-NetIndex-Claim-ROLE arrive:
+        // the HTTP layer merges them into one case-insensitive header with two values.
+        context.Request.Headers["X-NetIndex-Claim-Role"] =
+            new Microsoft.Extensions.Primitives.StringValues(["admin", "evil"]);
+
+        await middleware.InvokeAsync(context);
+
+        context.Items[NetIndexTenantMiddleware.MalformedTenantKey].Should().Be("ClaimKeyCollision");
         context.Items[NetIndexTenantMiddleware.ClaimsContextKey].Should().BeNull();
     }
 }

@@ -43,7 +43,17 @@ internal sealed class ChannelIngestionQueue : IIngestionQueue
         // background worker has no HttpContext of its own, so deferring this read would lose it.
         var items = _httpContextAccessor.HttpContext?.Items;
         var tenantId = items?[NetIndexTenantMiddleware.TenantContextKey] as string;
-        var claims = items?[NetIndexTenantMiddleware.ClaimsContextKey] as IReadOnlyDictionary<string, string>;
+
+        // Defensive copy of the claims dictionary — capture an immutable snapshot at enqueue time
+        // so the background consumer holds its own copy, not a reference into the live request
+        // Items dictionary that will be cleared when the request ends (AC-2).
+        IReadOnlyDictionary<string, string>? claims = null;
+        if (items?[NetIndexTenantMiddleware.ClaimsContextKey] is IDictionary<string, string> liveClaims)
+        {
+            // Preserve OrdinalIgnoreCase so the background consumer's claim lookups behave
+            // identically to the request path (AC-2: defensive copy must not drop the comparer).
+            claims = new Dictionary<string, string>(liveClaims, StringComparer.OrdinalIgnoreCase);
+        }
 
         var workItem = new IngestionWorkItem(document, tenantId, claims);
         return _channel.Writer.WriteAsync(workItem, cancellationToken);

@@ -55,6 +55,9 @@ public sealed class HttpContextTenantResolver : ITenantResolver
                 failureReason: "NoHttpContext");
         }
 
+        // Surface any malformed-request marker set by the middleware.
+        ThrowIfMalformed(ctx);
+
         if (ctx.Items[NetIndexTenantMiddleware.TenantContextKey] is not string s ||
             string.IsNullOrWhiteSpace(s))
         {
@@ -86,11 +89,29 @@ public sealed class HttpContextTenantResolver : ITenantResolver
                 failureReason: "NoHttpContext");
         }
 
-        if (ctx.Items[NetIndexTenantMiddleware.ClaimsContextKey] is IReadOnlyDictionary<string, string> claims)
+        // Surface any malformed-request marker set by the middleware.
+        ThrowIfMalformed(ctx);
+
+        if (ctx.Items[NetIndexTenantMiddleware.ClaimsContextKey] is IDictionary<string, string> claims)
         {
-            return Task.FromResult(claims);
+            // Defensive copy — callers receive an immutable snapshot of the claims dictionary.
+            // Preserve OrdinalIgnoreCase so case-insensitive claim lookup works downstream (AC-2).
+            return Task.FromResult<IReadOnlyDictionary<string, string>>(
+                new Dictionary<string, string>(claims, StringComparer.OrdinalIgnoreCase));
         }
 
         return Task.FromResult(EmptyClaims);
+    }
+
+    private static void ThrowIfMalformed(HttpContext ctx)
+    {
+        if (ctx.Items[NetIndexTenantMiddleware.MalformedTenantKey] is string reason)
+        {
+            throw new NetIndexAuthorizationException(
+                $"Request tenant context is malformed ({reason}). The request has been rejected.",
+                tenantId: null,
+                requiredClaim: null,
+                failureReason: reason);
+        }
     }
 }

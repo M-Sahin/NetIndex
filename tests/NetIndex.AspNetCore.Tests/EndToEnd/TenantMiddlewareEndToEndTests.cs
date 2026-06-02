@@ -1,3 +1,4 @@
+#pragma warning disable CS1591
 using System.Net;
 using FluentAssertions;
 using Microsoft.AspNetCore.Builder;
@@ -10,6 +11,10 @@ using Microsoft.Extensions.Hosting;
 using NetIndex.Core;
 using NetIndex.Core.Abstractions;
 using Xunit;
+
+// TestServer sets RemoteIpAddress = null for in-process connections.
+// The claims-header factory uses a pre-middleware to stamp a known loopback IP so that
+// IsFromTrustedProxy matches the configured TrustedProxies list.
 
 namespace NetIndex.AspNetCore.Tests.EndToEnd;
 
@@ -39,13 +44,15 @@ public class TenantMiddlewareEndToEndTests
     }
 
     /// <summary>
-    /// Prefixed claim headers are forwarded through the middleware into the
-    /// claims dictionary returned by <see cref="ITenantResolver.ResolveClaimsAsync"/>.
+    /// Prefixed claim headers forwarded via an opt-in trusted-proxy configuration are available
+    /// through <see cref="ITenantResolver.ResolveClaimsAsync"/>.
     /// </summary>
     [Fact]
     public async Task EndToEnd_WithWebApplicationFactory_ClaimsHeaders_ForwardToResolverAsync()
     {
-        await using var factory = new TenantWebApplicationFactory();
+        // Uses a separate factory that opts in to claim-header forwarding and stamps the
+        // TestServer loopback IP so the trusted-proxy check passes.
+        await using var factory = new ClaimsHeaderWebApplicationFactory();
         var client = factory.CreateClient();
 
         var request = new HttpRequestMessage(HttpMethod.Get, "/claims");
@@ -75,9 +82,7 @@ internal sealed class TenantWebApplicationFactory : WebApplicationFactory<Progra
 {
     protected override IHost CreateHost(IHostBuilder builder)
     {
-        // WebApplicationFactory.ConfigureHostBuilder sets the content root to a non-existent
-        // path derived from the test assembly name. Override it here (after ConfigureHostBuilder
-        // runs) so the last-wins IConfiguration source points to an existing directory.
+        // Override content root so the IConfiguration last-wins source points to an existing directory.
         builder.UseContentRoot(AppContext.BaseDirectory);
         return base.CreateHost(builder);
     }
@@ -95,6 +100,84 @@ internal sealed class TenantWebApplicationFactory : WebApplicationFactory<Progra
                 });
                 web.Configure(app =>
                 {
+                    app.UseNetIndexTenant();
+                    app.UseRouting();
+#pragma warning disable ASP0014
+                    app.UseEndpoints(endpoints =>
+                    {
+                        endpoints.MapGet("/tenant", async context =>
+                        {
+                            var resolver = context.RequestServices.GetRequiredService<ITenantResolver>();
+                            try
+                            {
+                                var tenantId = await resolver.ResolveTenantIdAsync(context.RequestAborted);
+                                context.Response.StatusCode = 200;
+                                await context.Response.WriteAsync(tenantId);
+                            }
+                            catch (NetIndexAuthorizationException)
+                            {
+                                context.Response.StatusCode = 401;
+                            }
+                        });
+
+                        endpoints.MapGet("/claims", async context =>
+                        {
+                            var resolver = context.RequestServices.GetRequiredService<ITenantResolver>();
+                            try
+                            {
+                                var claims = await resolver.ResolveClaimsAsync(context.RequestAborted);
+                                context.Response.StatusCode = 200;
+                                var body = string.Join(";", claims.OrderBy(c => c.Key).Select(c => $"{c.Key}={c.Value}"));
+                                await context.Response.WriteAsync(body);
+                            }
+                            catch (NetIndexAuthorizationException)
+                            {
+                                context.Response.StatusCode = 401;
+                            }
+                        });
+                    });
+#pragma warning restore ASP0014
+                });
+            });
+    }
+}
+
+/// <summary>
+/// Factory that opts in to claim-header forwarding. A pre-middleware stamps the TestServer
+/// in-process connection with IPAddress.Loopback so the TrustedProxies check passes.
+/// </summary>
+internal sealed class ClaimsHeaderWebApplicationFactory : WebApplicationFactory<Program>
+{
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        builder.UseContentRoot(AppContext.BaseDirectory);
+        return base.CreateHost(builder);
+    }
+
+    protected override IHostBuilder CreateHostBuilder()
+    {
+        return new HostBuilder()
+            .ConfigureWebHost(web =>
+            {
+                web.UseTestServer();
+                web.ConfigureServices(services =>
+                {
+                    services.AddRouting();
+                    services.AddNetIndex(net => net.UseAspNetCoreTenant(opts =>
+                    {
+                        opts.AcceptClaimHeaders = true;
+                        opts.TrustedProxies.Add("127.0.0.1");
+                    })).Build();
+                });
+                web.Configure(app =>
+                {
+                    // TestServer leaves RemoteIpAddress = null; stamp loopback so the
+                    // trusted-proxy check in NetIndexTenantMiddleware succeeds.
+                    app.Use(async (ctx, next) =>
+                    {
+                        ctx.Connection.RemoteIpAddress = IPAddress.Loopback;
+                        await next();
+                    });
                     app.UseNetIndexTenant();
                     app.UseRouting();
 #pragma warning disable ASP0014

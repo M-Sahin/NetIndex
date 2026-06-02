@@ -24,6 +24,40 @@ public sealed class NetIndexTenantOptions
     /// This is a header pass-through mechanism for upstream-already-authenticated requests
     /// (e.g., an API gateway that translates JWT claims into request headers before forwarding);
     /// it is not a replacement for <c>ClaimsTenantResolver</c> (Story 6.1).
+    /// <para>
+    /// A pure-whitespace value is treated as <strong>disabled</strong> — no headers are forwarded.
+    /// </para>
     /// </remarks>
     public string ClaimsHeaderPrefix { get; set; } = "X-NetIndex-Claim-";
+
+    /// <summary>
+    /// Whether to accept <c>X-NetIndex-Claim-*</c> (or <see cref="ClaimsHeaderPrefix"/>-prefixed)
+    /// request headers and forward them as claims.
+    /// </summary>
+    /// <remarks>
+    /// <strong>Defaults to <c>false</c> (secure-by-default).</strong>
+    /// Claim-header pass-through is an escalation surface: a client that can forge
+    /// <c>X-NetIndex-Claim-Role: admin</c> can impersonate any identity. Enable this only when
+    /// all of the following are true:
+    /// <list type="number">
+    ///   <item>The NetIndex service is placed behind a trusted reverse proxy or API gateway.</item>
+    ///   <item>That gateway <strong>strips</strong> inbound <c>X-NetIndex-Claim-*</c> headers
+    ///         before forwarding client requests.</item>
+    ///   <item>The gateway adds its own claim headers after authenticating the client.</item>
+    ///   <item>The gateway IP(s) are listed in <see cref="TrustedProxies"/>.</item>
+    /// </list>
+    /// Enabling this flag without configuring <see cref="TrustedProxies"/> still rejects
+    /// claim headers from every remote address.
+    /// </remarks>
+    public bool AcceptClaimHeaders { get; set; } = false;
+
+    /// <summary>
+    /// IP addresses (exact string match) of reverse proxies or API gateways that are allowed
+    /// to forward claim headers when <see cref="AcceptClaimHeaders"/> is <c>true</c>.
+    /// </summary>
+    /// <remarks>
+    /// An empty list means no address is trusted even when <see cref="AcceptClaimHeaders"/> is
+    /// <c>true</c>. Supports IPv4 and IPv6 address strings (e.g. <c>"127.0.0.1"</c>, <c>"::1"</c>).
+    /// </remarks>
+    public IList<string> TrustedProxies { get; } = new List<string>();
 }
