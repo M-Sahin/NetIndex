@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NetIndex.Core.Abstractions;
 using NetIndex.Core.NullObjects;
@@ -131,10 +132,11 @@ public sealed class NetIndexBuilder : INetIndexBuilder
             var chatClient = sp.GetRequiredService<IChatClient>();
             var reranker = sp.GetService<IDocumentReranker>();
             var tenantFilteringOptions = sp.GetService<TenantFilteringOptions>();
+            var logger = sp.GetService<ILogger<NetIndexPipeline>>();
 
             return new NetIndexPipeline(
                 tenantResolver, chunkingStrategy, embeddingGenerator, vectorStore, chatClient, reranker,
-                tenantFilteringOptions);
+                tenantFilteringOptions, logger);
         });
         _services.TryAddSingleton<NetIndexPipeline>(sp =>
             (NetIndexPipeline)sp.GetRequiredService<INetIndexPipeline>());
