@@ -1,8 +1,10 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NetIndex.Core.Abstractions;
+using NetIndex.Core.Abstractions.Telemetry;
 using NetIndex.Core.Options;
 
 namespace NetIndex.Core;
@@ -93,25 +95,64 @@ public sealed class NetIndexPipeline : INetIndexPipeline
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        var tenantId = await AuthorizeAsync(cancellationToken);
+        using var ingestActivity = NetIndexActivitySource.Source.StartActivity(NetIndexSpanNames.Ingest, ActivityKind.Internal);
+        ingestActivity?.SetTag(NetIndexSpanTags.DocumentId, document.Id);
+
+        string tenantId;
+        try
+        {
+            tenantId = await AuthorizeAsync(cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            MarkActivityError(ingestActivity, exception);
+            throw;
+        }
+
+        ingestActivity?.SetTag(NetIndexSpanTags.TenantId, tenantId);
 
         try
         {
             var strategy = _chunkingStrategy.Value;
-            var chunks = await strategy.ChunkAsync(
-                document.Content,
-                DefaultChunkingOptions,
-                cancellationToken);
 
-            var chunkList = chunks.ToList();
-            var texts = chunkList.Select(c => c.Text).ToArray();
-            var embeddings = await _embeddingGenerator.GenerateBatchAsync(texts, cancellationToken);
-
-            if (embeddings.Length != chunkList.Count)
+            List<RagChunk> chunkList;
+            using (var chunkActivity = NetIndexActivitySource.Source.StartActivity(NetIndexSpanNames.Chunk, ActivityKind.Internal))
             {
-                throw new NetIndexProviderException(
-                    $"Embedding batch returned {embeddings.Length} vectors for {chunkList.Count} chunks.",
-                    false, null, "EmbeddingBatchMismatch", null);
+                try
+                {
+                    var chunks = await strategy.ChunkAsync(document.Content, DefaultChunkingOptions, cancellationToken);
+                    chunkList = chunks.ToList();
+                    chunkActivity?.SetTag(NetIndexSpanTags.ChunkCount, chunkList.Count);
+                }
+                catch (Exception exception)
+                {
+                    MarkActivityError(chunkActivity, exception, "Chunking failed");
+                    throw;
+                }
+            }
+
+            var texts = chunkList.Select(c => c.Text).ToArray();
+            float[][] embeddings;
+            using (var embedActivity = NetIndexActivitySource.Source.StartActivity(NetIndexSpanNames.Embed, ActivityKind.Internal))
+            {
+                try
+                {
+                    embeddings = await _embeddingGenerator.GenerateBatchAsync(texts, cancellationToken);
+                    embedActivity?.SetTag(NetIndexSpanTags.EmbeddingCount, embeddings.Length);
+                    embedActivity?.SetTag(NetIndexSpanTags.EmbeddingDimensions, embeddings.Length > 0 ? embeddings[0].Length : 0);
+
+                    if (embeddings.Length != chunkList.Count)
+                    {
+                        throw new NetIndexProviderException(
+                            $"Embedding batch returned {embeddings.Length} vectors for {chunkList.Count} chunks.",
+                            false, null, "EmbeddingBatchMismatch", null);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    MarkActivityError(embedActivity, exception, "Embedding generation failed");
+                    throw;
+                }
             }
 
             var enrichedChunks = new List<RagChunk>();
@@ -144,18 +185,29 @@ public sealed class NetIndexPipeline : INetIndexPipeline
                     new RagChunk(chunkId, original.Text, embeddings[i], document.Id, metadata));
             }
 
+            ingestActivity?.SetTag(NetIndexSpanTags.ChunkCount, enrichedChunks.Count);
+            ingestActivity?.AddEvent(new ActivityEvent(
+                "netindex.upsert",
+                tags: new ActivityTagsCollection
+                {
+                    { NetIndexSpanTags.ChunkCount, enrichedChunks.Count },
+                }));
+
             await _vectorStore.UpsertAsync(enrichedChunks, cancellationToken);
         }
-        catch (NetIndexException)
+        catch (NetIndexException exception)
         {
+            MarkActivityError(ingestActivity, exception, "NetIndex exception in ingest");
             throw;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException exception)
         {
+            MarkActivityError(ingestActivity, exception, "Ingest cancelled");
             throw;
         }
         catch (Exception exception)
         {
+            MarkActivityError(ingestActivity, exception);
             throw new NetIndexProviderException(
                 "Ingestion pipeline failed.",
                 exception is TimeoutException,
@@ -187,7 +239,21 @@ public sealed class NetIndexPipeline : INetIndexPipeline
         string tenantId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var queryVector = await _embeddingGenerator.GenerateAsync(query, cancellationToken);
+        // Embed span — no yield return inside this try/catch, so CS1626 does not apply.
+        float[] queryVector;
+        using (var embedActivity = NetIndexActivitySource.Source.StartActivity(NetIndexSpanNames.Embed, ActivityKind.Internal))
+        {
+            try
+            {
+                queryVector = await _embeddingGenerator.GenerateAsync(query, cancellationToken);
+                embedActivity?.SetTag(NetIndexSpanTags.EmbeddingDimensions, queryVector.Length);
+            }
+            catch (Exception exception)
+            {
+                MarkActivityError(embedActivity, exception, "Query embedding failed");
+                throw;
+            }
+        }
 
         // Over-fetch to compensate for cross-tenant chunks crowding the global top-K.
         // Clamp factor to >= 1 so a misconfigured 0 / negative value never produces fetchTop <= 0.
@@ -200,36 +266,77 @@ public sealed class NetIndexPipeline : INetIndexPipeline
 
         if (_reranker is not null)
         {
-            var resultBuffer = new List<SearchResult<RagChunk>>();
-            await foreach (var result in _vectorStore
-                .QueryAsync(queryVector, fetchTop, cancellationToken)
-                .WithCancellation(cancellationToken))
+            // Scope the retrieve span tightly around buffering + filtering so it closes before yields.
+            List<SearchResult<RagChunk>> rerankedFinal;
             {
-                resultBuffer.Add(result);
+                using var retrieveActivity = NetIndexActivitySource.Source.StartActivity(NetIndexSpanNames.Retrieve, ActivityKind.Internal);
+                try
+                {
+                    var resultBuffer = new List<SearchResult<RagChunk>>();
+                    await foreach (var result in _vectorStore
+                        .QueryAsync(queryVector, fetchTop, cancellationToken)
+                        .WithCancellation(cancellationToken))
+                    {
+                        resultBuffer.Add(result);
+                    }
+
+                    // Filter to caller's tenant before reranking — never rerank another tenant's chunks.
+                    // No cap before reranking: pass the full filtered pool so the reranker can score all
+                    // candidates; cap to DefaultQueryTop only after reranking (AC-1 reranker-path fix).
+                    var tenantBuffer = FilterByTenant(resultBuffer, tenantId);
+                    var filteredCount = tenantBuffer.Count;
+                    var reranked = await _reranker.RerankAsync(tenantBuffer, query, cancellationToken);
+                    rerankedFinal = reranked.Take(TenantFilteringOptions.DefaultQueryTop).ToList();
+
+                    retrieveActivity?.SetTag(NetIndexSpanTags.TenantId, tenantId);
+                    retrieveActivity?.SetTag(NetIndexSpanTags.RetrieveTop, fetchTop);
+                    retrieveActivity?.SetTag(NetIndexSpanTags.RetrieveResultCount, resultBuffer.Count);
+                    retrieveActivity?.SetTag(NetIndexSpanTags.RetrieveFilteredCount, filteredCount);
+                }
+                catch (Exception exception)
+                {
+                    MarkActivityError(retrieveActivity, exception, "Retrieval failed");
+                    throw;
+                }
             }
 
-            // Filter to caller's tenant before reranking — never rerank another tenant's chunks.
-            // No cap before reranking: pass the full filtered pool so the reranker can score all
-            // candidates; cap to DefaultQueryTop only after reranking (AC-1 reranker-path fix).
-            var tenantBuffer = FilterByTenant(resultBuffer, tenantId);
-            var reranked = await _reranker.RerankAsync(tenantBuffer, query, cancellationToken);
-            foreach (var rerankedResult in reranked.Take(TenantFilteringOptions.DefaultQueryTop))
+            foreach (var r in rerankedFinal)
             {
-                yield return rerankedResult;
+                yield return r;
             }
         }
         else
         {
-            var resultBuffer = new List<SearchResult<RagChunk>>();
-            await foreach (var result in _vectorStore
-                .QueryAsync(queryVector, fetchTop, cancellationToken)
-                .WithCancellation(cancellationToken))
+            // Scope the retrieve span tightly around buffering + filtering so it closes before yields.
+            List<SearchResult<RagChunk>> finalResults;
             {
-                resultBuffer.Add(result);
+                using var retrieveActivity = NetIndexActivitySource.Source.StartActivity(NetIndexSpanNames.Retrieve, ActivityKind.Internal);
+                try
+                {
+                    var resultBuffer = new List<SearchResult<RagChunk>>();
+                    await foreach (var result in _vectorStore
+                        .QueryAsync(queryVector, fetchTop, cancellationToken)
+                        .WithCancellation(cancellationToken))
+                    {
+                        resultBuffer.Add(result);
+                    }
+
+                    var filtered = FilterByTenant(resultBuffer, tenantId);
+                    finalResults = filtered.Take(TenantFilteringOptions.DefaultQueryTop).ToList();
+
+                    retrieveActivity?.SetTag(NetIndexSpanTags.TenantId, tenantId);
+                    retrieveActivity?.SetTag(NetIndexSpanTags.RetrieveTop, fetchTop);
+                    retrieveActivity?.SetTag(NetIndexSpanTags.RetrieveResultCount, resultBuffer.Count);
+                    retrieveActivity?.SetTag(NetIndexSpanTags.RetrieveFilteredCount, filtered.Count);
+                }
+                catch (Exception exception)
+                {
+                    MarkActivityError(retrieveActivity, exception, "Retrieval failed");
+                    throw;
+                }
             }
 
-            foreach (var result in FilterByTenant(resultBuffer, tenantId)
-                         .Take(TenantFilteringOptions.DefaultQueryTop))
+            foreach (var result in finalResults)
             {
                 yield return result;
             }
@@ -276,16 +383,76 @@ public sealed class NetIndexPipeline : INetIndexPipeline
         string tenantId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var contextChunks = new List<RagChunk>();
-        await foreach (var result in ExecuteQueryAsync(query, tenantId, cancellationToken))
+        var generateActivity = NetIndexActivitySource.Source.StartActivity(NetIndexSpanNames.Generate, ActivityKind.Internal);
+        generateActivity?.SetTag(NetIndexSpanTags.TenantId, tenantId);
+
+        // Context-gathering phase: no yield return here so try/catch is valid (CS1626 does not apply).
+        // If gathering fails, mark the generate span Error and dispose before rethrowing.
+        List<RagChunk> contextChunks;
+        try
         {
-            contextChunks.Add(result.Item);
+            contextChunks = new List<RagChunk>();
+            await foreach (var result in ExecuteQueryAsync(query, tenantId, cancellationToken))
+            {
+                contextChunks.Add(result.Item);
+            }
+        }
+        catch (Exception exception)
+        {
+            MarkActivityError(generateActivity, exception);
+            generateActivity?.Dispose();
+            throw;
         }
 
-        await foreach (var chunk in _chatClient.GenerateStreamingAsync(
-                         query, contextChunks, cancellationToken))
+        generateActivity?.SetTag(NetIndexSpanTags.ContextChunkCount, contextChunks.Count);
+
+        // The generate span spans the full chat generation duration and is disposed in the finally.
+        var enumerator = _chatClient.GenerateStreamingAsync(query, contextChunks, cancellationToken)
+            .GetAsyncEnumerator(cancellationToken);
+        try
         {
-            yield return chunk;
+            while (true)
+            {
+                GenerationChunk chunk;
+                try
+                {
+                    if (!await enumerator.MoveNextAsync())
+                    {
+                        break;
+                    }
+
+                    chunk = enumerator.Current;
+                }
+                catch (Exception exception)
+                {
+                    MarkActivityError(generateActivity, exception);
+                    throw;
+                }
+
+                yield return chunk;
+            }
         }
+        finally
+        {
+            await enumerator.DisposeAsync();
+            generateActivity?.Dispose();
+        }
+    }
+
+    private static void MarkActivityError(Activity? activity, Exception exception, string? description = null)
+    {
+        if (activity is null)
+        {
+            return;
+        }
+
+        activity.SetStatus(ActivityStatusCode.Error, description ?? exception.Message);
+        activity.AddEvent(new ActivityEvent(
+            "exception",
+            tags: new ActivityTagsCollection
+            {
+                { "exception.type", exception.GetType().FullName },
+                { "exception.message", exception.Message },
+            }));
     }
 }
