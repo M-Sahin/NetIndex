@@ -171,6 +171,17 @@ public sealed class PipelineLoggingTests
 #pragma warning restore CS0162
     }
 
+    private sealed class DisposeThrowingGenerationStream : IAsyncEnumerable<GenerationChunk>, IAsyncEnumerator<GenerationChunk>
+    {
+        public GenerationChunk Current => new(string.Empty, true, FinishReason.Stop);
+
+        public IAsyncEnumerator<GenerationChunk> GetAsyncEnumerator(CancellationToken cancellationToken = default) => this;
+
+        public System.Threading.Tasks.ValueTask<bool> MoveNextAsync() => System.Threading.Tasks.ValueTask.FromResult(false);
+
+        public System.Threading.Tasks.ValueTask DisposeAsync() => throw new InvalidOperationException("dispose boom");
+    }
+
     // ── AC-1 / AC-2: Ingest success log ──
 
     [Fact]
@@ -264,6 +275,26 @@ public sealed class PipelineLoggingTests
         Assert.Equal(NetIndexLogStatus.Canceled, StateValue(entry.State, NetIndexLogFields.Status));
     }
 
+    [Fact]
+    public async System.Threading.Tasks.Task IngestAsync_WhenGenericFailureIsWrapped_LogsProviderErrorCodeAsync()
+    {
+        var (mocks, logger, pipeline) = BuildPipeline();
+        mocks.MockEmbedding.GenerateBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+            .Returns(System.Threading.Tasks.Task.FromResult(new float[][] { new float[384] }));
+        mocks.MockStore.UpsertAsync(Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
+            .Returns<System.Threading.Tasks.Task>(_ => throw new InvalidOperationException("raw upsert failure"));
+
+        await Assert.ThrowsAsync<NetIndexProviderException>(
+            () => pipeline.IngestAsync(CreateDocument("doc-1", "text")));
+
+        var entry = Assert.Single(logger.Entries, e => e.EventId == NetIndexLogEventIds.IngestFailed);
+        Assert.Equal(LogLevel.Error, entry.Level);
+        Assert.IsType<NetIndexProviderException>(entry.Exception);
+        Assert.Equal("NetIndex.Core.Abstractions.NetIndexProviderException",
+            StateValue(entry.State, NetIndexLogFields.ExceptionType));
+        Assert.Equal("IngestionFailed", StateValue(entry.State, NetIndexLogFields.ErrorCode));
+    }
+
     // ── AC-2: Query success log ──
 
     [Fact]
@@ -286,6 +317,7 @@ public sealed class PipelineLoggingTests
         Assert.Equal(NetIndexLogOperations.Query, StateValue(entry.State, NetIndexLogFields.Operation));
         Assert.Equal(NetIndexLogStatus.Succeeded, StateValue(entry.State, NetIndexLogFields.Status));
         Assert.Equal("test-tenant", StateValue(entry.State, NetIndexSpanTags.TenantId));
+        Assert.Equal(384, StateValue(entry.State, NetIndexSpanTags.EmbeddingDimensions));
         Assert.True(StateContainsKey(entry.State, NetIndexSpanTags.RetrieveTop));
         Assert.True(StateContainsKey(entry.State, NetIndexSpanTags.RetrieveResultCount));
         Assert.True(StateContainsKey(entry.State, NetIndexSpanTags.RetrieveFilteredCount));
@@ -365,6 +397,10 @@ public sealed class PipelineLoggingTests
         Assert.Equal(NetIndexLogOperations.Generate, StateValue(entry.State, NetIndexLogFields.Operation));
         Assert.Equal(NetIndexLogStatus.Succeeded, StateValue(entry.State, NetIndexLogFields.Status));
         Assert.Equal("test-tenant", StateValue(entry.State, NetIndexSpanTags.TenantId));
+        Assert.Equal(384, StateValue(entry.State, NetIndexSpanTags.EmbeddingDimensions));
+        Assert.True(StateContainsKey(entry.State, NetIndexSpanTags.RetrieveTop));
+        Assert.Equal(1, StateValue(entry.State, NetIndexSpanTags.RetrieveResultCount));
+        Assert.Equal(1, StateValue(entry.State, NetIndexSpanTags.RetrieveFilteredCount));
         Assert.True(StateContainsKey(entry.State, NetIndexSpanTags.ContextChunkCount));
     }
 
@@ -423,6 +459,50 @@ public sealed class PipelineLoggingTests
         Assert.Equal("chat boom", StateValue(entry.State, NetIndexLogFields.ExceptionMessage));
     }
 
+    [Fact]
+    public async System.Threading.Tasks.Task GenerateAsync_WhenChatStreamSetupFails_EmitsErrorLogAsync()
+    {
+        var (mocks, logger, pipeline) = BuildPipeline();
+
+        mocks.MockEmbedding.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(System.Threading.Tasks.Task.FromResult(new float[384]));
+        mocks.MockStore.QueryAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(EmptySearchResultsAsync());
+        mocks.MockChat.GenerateStreamingAsync(
+            Arg.Any<string>(), Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
+            .Returns<IAsyncEnumerable<GenerationChunk>>(_ => throw new InvalidOperationException("setup boom"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => { await foreach (var _ in pipeline.GenerateAsync("q")) { } });
+
+        var entry = Assert.Single(logger.Entries, e => e.EventId == NetIndexLogEventIds.GenerateFailed);
+        Assert.Equal(LogLevel.Error, entry.Level);
+        Assert.Equal(NetIndexLogStatus.Failed, StateValue(entry.State, NetIndexLogFields.Status));
+        Assert.Equal("setup boom", StateValue(entry.State, NetIndexLogFields.ExceptionMessage));
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task GenerateAsync_WhenChatStreamDisposeFails_EmitsErrorLogAsync()
+    {
+        var (mocks, logger, pipeline) = BuildPipeline();
+
+        mocks.MockEmbedding.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(System.Threading.Tasks.Task.FromResult(new float[384]));
+        mocks.MockStore.QueryAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(EmptySearchResultsAsync());
+        mocks.MockChat.GenerateStreamingAsync(
+            Arg.Any<string>(), Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
+            .Returns(new DisposeThrowingGenerationStream());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => { await foreach (var _ in pipeline.GenerateAsync("q")) { } });
+
+        var entry = Assert.Single(logger.Entries, e => e.EventId == NetIndexLogEventIds.GenerateFailed);
+        Assert.Equal(LogLevel.Error, entry.Level);
+        Assert.Equal(NetIndexLogStatus.Failed, StateValue(entry.State, NetIndexLogFields.Status));
+        Assert.Equal("dispose boom", StateValue(entry.State, NetIndexLogFields.ExceptionMessage));
+    }
+
     // ── AC-3: Generate auth failure log ──
 
     [Fact]
@@ -445,7 +525,7 @@ public sealed class PipelineLoggingTests
     // ── AC-1: DI regression — AddNetIndex().Build() wires logger, singleton is shared ──
 
     [Fact]
-    public void AddNetIndex_Build_ResolvesINetIndexPipelineAndNetIndexPipelineAsSameSingleton()
+    public async System.Threading.Tasks.Task AddNetIndex_Build_ResolvesINetIndexPipelineAndNetIndexPipelineAsSameSingletonAsync()
     {
         var services = new ServiceCollection();
 
@@ -453,13 +533,21 @@ public sealed class PipelineLoggingTests
         var embedding = Substitute.For<IEmbeddingGenerator>();
         var store = Substitute.For<IVectorStore>();
         var chat = Substitute.For<IChatClient>();
+        var logger = new CapturingLogger();
+        resolver.ResolveTenantIdAsync(Arg.Any<CancellationToken>())
+            .Returns(System.Threading.Tasks.Task.FromResult("test-tenant"));
         embedding.Dimensions.Returns(384);
+        embedding.GenerateBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+            .Returns(System.Threading.Tasks.Task.FromResult(new float[][] { new float[384] }));
         store.Dimensions.Returns(384);
+        store.UpsertAsync(Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
+            .Returns(System.Threading.Tasks.Task.CompletedTask);
 
         services.AddSingleton(resolver);
         services.AddSingleton(embedding);
         services.AddSingleton(store);
         services.AddSingleton(chat);
+        services.AddSingleton<ILogger<NetIndexPipeline>>(logger);
         services.AddNetIndex().Build();
 
         var provider = services.BuildServiceProvider();
@@ -468,5 +556,9 @@ public sealed class PipelineLoggingTests
 
         Assert.Same(pipeline1, pipeline2);
         Assert.IsType<NetIndexPipeline>(pipeline1);
+
+        await pipeline1.IngestAsync(CreateDocument("doc-di", "text"));
+
+        Assert.Single(logger.Entries, e => e.EventId == NetIndexLogEventIds.IngestSucceeded);
     }
 }

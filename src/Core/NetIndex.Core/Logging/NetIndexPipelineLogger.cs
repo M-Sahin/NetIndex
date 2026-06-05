@@ -83,7 +83,7 @@ internal static class NetIndexPipelineLogger
 
     public static void LogQuerySucceeded(
         ILogger logger, long durationMs, string tenantId,
-        int retrieveTop, int resultCount, int filteredCount)
+        int embeddingDimensions, int retrieveTop, int resultCount, int filteredCount)
     {
         if (!logger.IsEnabled(LogLevel.Information))
         {
@@ -96,6 +96,7 @@ internal static class NetIndexPipelineLogger
             new(NetIndexLogFields.Status, NetIndexLogStatus.Succeeded),
             new(NetIndexLogFields.DurationMs, durationMs),
             new(NetIndexSpanTags.TenantId, tenantId),
+            new(NetIndexSpanTags.EmbeddingDimensions, embeddingDimensions),
             new(NetIndexSpanTags.RetrieveTop, retrieveTop),
             new(NetIndexSpanTags.RetrieveResultCount, resultCount),
             new(NetIndexSpanTags.RetrieveFilteredCount, filteredCount),
@@ -122,7 +123,8 @@ internal static class NetIndexPipelineLogger
     // ── Generate ──
 
     public static void LogGenerateSucceeded(
-        ILogger logger, long durationMs, string tenantId, int contextChunkCount)
+        ILogger logger, long durationMs, string tenantId,
+        int embeddingDimensions, int retrieveTop, int resultCount, int filteredCount, int contextChunkCount)
     {
         if (!logger.IsEnabled(LogLevel.Information))
         {
@@ -135,6 +137,10 @@ internal static class NetIndexPipelineLogger
             new(NetIndexLogFields.Status, NetIndexLogStatus.Succeeded),
             new(NetIndexLogFields.DurationMs, durationMs),
             new(NetIndexSpanTags.TenantId, tenantId),
+            new(NetIndexSpanTags.EmbeddingDimensions, embeddingDimensions),
+            new(NetIndexSpanTags.RetrieveTop, retrieveTop),
+            new(NetIndexSpanTags.RetrieveResultCount, resultCount),
+            new(NetIndexSpanTags.RetrieveFilteredCount, filteredCount),
             new(NetIndexSpanTags.ContextChunkCount, contextChunkCount),
             new("{OriginalFormat}", "NetIndex generate {netindex.status} [{netindex.duration_ms}ms]"),
         };

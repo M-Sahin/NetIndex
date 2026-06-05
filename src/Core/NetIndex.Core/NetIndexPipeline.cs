@@ -29,6 +29,39 @@ public sealed class NetIndexPipeline : INetIndexPipeline
     private readonly TenantFilteringOptions _tenantFilteringOptions;
     private readonly ILogger<NetIndexPipeline> _logger;
 
+    private sealed class QueryLogMetrics
+    {
+        public int EmbeddingDimensions { get; set; }
+
+        public int RetrieveTop { get; set; }
+
+        public int ResultCount { get; set; }
+
+        public int FilteredCount { get; set; }
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="NetIndexPipeline"/> class.
+    /// </summary>
+    /// <param name="tenantResolver">Tenant resolver for authorization checks.</param>
+    /// <param name="chunkingStrategy">Optional chunking strategy. Null uses pass-through default.</param>
+    /// <param name="embeddingGenerator">Embedding generator for text vectors.</param>
+    /// <param name="vectorStore">Vector store for persistence and similarity search.</param>
+    /// <param name="chatClient">Chat client for LLM generation.</param>
+    /// <param name="reranker">Optional reranker for post-retrieval scoring.</param>
+    /// <param name="tenantFilteringOptions">Optional tenant filtering options. Null uses defaults.</param>
+    public NetIndexPipeline(
+        ITenantResolver tenantResolver,
+        IChunkingStrategy? chunkingStrategy,
+        IEmbeddingGenerator embeddingGenerator,
+        IVectorStore vectorStore,
+        IChatClient chatClient,
+        IDocumentReranker? reranker,
+        TenantFilteringOptions? tenantFilteringOptions = null)
+        : this(tenantResolver, chunkingStrategy, embeddingGenerator, vectorStore, chatClient, reranker, tenantFilteringOptions, null)
+    {
+    }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="NetIndexPipeline"/> class.
     /// </summary>
@@ -47,8 +80,8 @@ public sealed class NetIndexPipeline : INetIndexPipeline
         IVectorStore vectorStore,
         IChatClient chatClient,
         IDocumentReranker? reranker,
-        TenantFilteringOptions? tenantFilteringOptions = null,
-        ILogger<NetIndexPipeline>? logger = null)
+        TenantFilteringOptions? tenantFilteringOptions,
+        ILogger<NetIndexPipeline>? logger)
     {
         _tenantResolver = tenantResolver ?? throw new ArgumentNullException(nameof(tenantResolver));
         _chunkingStrategy = new(() => chunkingStrategy ?? new PassThroughChunkingStrategy());
@@ -225,14 +258,15 @@ public sealed class NetIndexPipeline : INetIndexPipeline
         catch (Exception exception)
         {
             MarkActivityError(ingestActivity, exception);
-            NetIndexPipelineLogger.LogIngestFailed(_logger, sw.ElapsedMilliseconds, tenantId, exception);
-            throw new NetIndexProviderException(
+            var wrapped = new NetIndexProviderException(
                 "Ingestion pipeline failed.",
                 exception is TimeoutException,
                 null,
                 "IngestionFailed",
                 null,
                 exception);
+            NetIndexPipelineLogger.LogIngestFailed(_logger, sw.ElapsedMilliseconds, tenantId, wrapped);
+            throw wrapped;
         }
     }
 
@@ -257,7 +291,8 @@ public sealed class NetIndexPipeline : INetIndexPipeline
             throw;
         }
 
-        await foreach (var result in ExecuteQueryAsync(query, tenantId, sw, shouldLog: true, cancellationToken)
+        var logMetrics = new QueryLogMetrics();
+        await foreach (var result in ExecuteQueryAsync(query, tenantId, sw, shouldLog: true, logMetrics, cancellationToken)
                        .WithCancellation(cancellationToken))
         {
             yield return result;
@@ -269,6 +304,7 @@ public sealed class NetIndexPipeline : INetIndexPipeline
         string tenantId,
         Stopwatch sw,
         bool shouldLog,
+        QueryLogMetrics logMetrics,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Embed span — no yield return inside this try/catch, so CS1626 does not apply.
@@ -278,6 +314,7 @@ public sealed class NetIndexPipeline : INetIndexPipeline
             try
             {
                 queryVector = await _embeddingGenerator.GenerateAsync(query, cancellationToken);
+                logMetrics.EmbeddingDimensions = queryVector.Length;
                 embedActivity?.SetTag(NetIndexSpanTags.EmbeddingDimensions, queryVector.Length);
             }
             catch (OperationCanceledException exception)
@@ -310,8 +347,8 @@ public sealed class NetIndexPipeline : INetIndexPipeline
         var fetchTop = (int)Math.Min(
             (long)TenantFilteringOptions.DefaultQueryTop * effectiveFactor,
             TenantFilteringOptions.MaxFetchCount);
+        logMetrics.RetrieveTop = fetchTop;
 
-        int logResultCount = 0, logFilteredCount = 0;
         List<SearchResult<RagChunk>> yieldResults = new();
 
         if (_reranker is not null)
@@ -337,8 +374,8 @@ public sealed class NetIndexPipeline : INetIndexPipeline
                     var reranked = await _reranker.RerankAsync(tenantBuffer, query, cancellationToken);
                     yieldResults = reranked.Take(TenantFilteringOptions.DefaultQueryTop).ToList();
 
-                    logResultCount = resultBuffer.Count;
-                    logFilteredCount = filteredCount;
+                    logMetrics.ResultCount = resultBuffer.Count;
+                    logMetrics.FilteredCount = filteredCount;
 
                     retrieveActivity?.SetTag(NetIndexSpanTags.TenantId, tenantId);
                     retrieveActivity?.SetTag(NetIndexSpanTags.RetrieveTop, fetchTop);
@@ -385,8 +422,8 @@ public sealed class NetIndexPipeline : INetIndexPipeline
                     var filtered = FilterByTenant(resultBuffer, tenantId);
                     yieldResults = filtered.Take(TenantFilteringOptions.DefaultQueryTop).ToList();
 
-                    logResultCount = resultBuffer.Count;
-                    logFilteredCount = filtered.Count;
+                    logMetrics.ResultCount = resultBuffer.Count;
+                    logMetrics.FilteredCount = filtered.Count;
 
                     retrieveActivity?.SetTag(NetIndexSpanTags.TenantId, tenantId);
                     retrieveActivity?.SetTag(NetIndexSpanTags.RetrieveTop, fetchTop);
@@ -420,7 +457,7 @@ public sealed class NetIndexPipeline : INetIndexPipeline
         if (shouldLog)
         {
             NetIndexPipelineLogger.LogQuerySucceeded(_logger, sw.ElapsedMilliseconds, tenantId,
-                fetchTop, logResultCount, logFilteredCount);
+                logMetrics.EmbeddingDimensions, logMetrics.RetrieveTop, logMetrics.ResultCount, logMetrics.FilteredCount);
         }
 
         foreach (var result in yieldResults)
@@ -488,10 +525,12 @@ public sealed class NetIndexPipeline : INetIndexPipeline
         // Context-gathering phase: no yield return here so try/catch is valid (CS1626 does not apply).
         // If gathering fails, mark the generate span Error and dispose before rethrowing.
         List<RagChunk> contextChunks;
+        QueryLogMetrics queryLogMetrics;
         try
         {
             contextChunks = new List<RagChunk>();
-            await foreach (var result in ExecuteQueryAsync(query, tenantId, sw, shouldLog: false, cancellationToken))
+            queryLogMetrics = new QueryLogMetrics();
+            await foreach (var result in ExecuteQueryAsync(query, tenantId, sw, shouldLog: false, queryLogMetrics, cancellationToken))
             {
                 contextChunks.Add(result.Item);
             }
@@ -511,17 +550,61 @@ public sealed class NetIndexPipeline : INetIndexPipeline
             throw;
         }
 
+        generateActivity?.SetTag(NetIndexSpanTags.EmbeddingDimensions, queryLogMetrics.EmbeddingDimensions);
+        generateActivity?.SetTag(NetIndexSpanTags.RetrieveTop, queryLogMetrics.RetrieveTop);
+        generateActivity?.SetTag(NetIndexSpanTags.RetrieveResultCount, queryLogMetrics.ResultCount);
+        generateActivity?.SetTag(NetIndexSpanTags.RetrieveFilteredCount, queryLogMetrics.FilteredCount);
         generateActivity?.SetTag(NetIndexSpanTags.ContextChunkCount, contextChunks.Count);
 
-        // The generate span spans the full chat generation duration and is disposed in the finally.
-        var enumerator = _chatClient.GenerateStreamingAsync(query, contextChunks, cancellationToken)
-            .GetAsyncEnumerator(cancellationToken);
+        await foreach (var chunk in ExecuteGenerateStreamAsync(
+                           query,
+                           tenantId,
+                           sw,
+                           generateActivity,
+                           contextChunks,
+                           queryLogMetrics,
+                           cancellationToken)
+                       .WithCancellation(cancellationToken))
+        {
+            yield return chunk;
+        }
+    }
 
+    private async IAsyncEnumerable<GenerationChunk> ExecuteGenerateStreamAsync(
+        string query,
+        string tenantId,
+        Stopwatch sw,
+        Activity? generateActivity,
+        List<RagChunk> contextChunks,
+        QueryLogMetrics queryLogMetrics,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        IAsyncEnumerator<GenerationChunk>? enumerator = null;
         var completedNaturally = false;
         var loggedError = false;
 
         try
         {
+            try
+            {
+                enumerator = _chatClient.GenerateStreamingAsync(query, contextChunks, cancellationToken)
+                    .GetAsyncEnumerator(cancellationToken);
+            }
+            catch (OperationCanceledException exception)
+            {
+                loggedError = true;
+                MarkActivityError(generateActivity, exception);
+                NetIndexPipelineLogger.LogGenerateFailed(_logger, sw.ElapsedMilliseconds, tenantId, exception);
+                throw;
+            }
+            catch (Exception exception)
+            {
+                loggedError = true;
+                MarkActivityError(generateActivity, exception);
+                NetIndexPipelineLogger.LogGenerateFailed(_logger, sw.ElapsedMilliseconds, tenantId, exception);
+                throw;
+            }
+
             while (true)
             {
                 GenerationChunk chunk;
@@ -555,19 +638,50 @@ public sealed class NetIndexPipeline : INetIndexPipeline
         }
         finally
         {
-            await enumerator.DisposeAsync();
-            if (!loggedError)
+            try
             {
-                if (completedNaturally)
+                if (enumerator is not null)
                 {
-                    NetIndexPipelineLogger.LogGenerateSucceeded(_logger, sw.ElapsedMilliseconds, tenantId, contextChunks.Count);
+                    try
+                    {
+                        await enumerator.DisposeAsync();
+                    }
+                    catch (Exception exception)
+                    {
+                        if (!loggedError)
+                        {
+                            loggedError = true;
+                            MarkActivityError(generateActivity, exception);
+                            NetIndexPipelineLogger.LogGenerateFailed(_logger, sw.ElapsedMilliseconds, tenantId, exception);
+                            throw;
+                        }
+                    }
                 }
-                else
+
+                if (!loggedError)
                 {
-                    NetIndexPipelineLogger.LogGenerateCanceled(_logger, sw.ElapsedMilliseconds, tenantId);
+                    if (completedNaturally)
+                    {
+                        NetIndexPipelineLogger.LogGenerateSucceeded(
+                            _logger,
+                            sw.ElapsedMilliseconds,
+                            tenantId,
+                            queryLogMetrics.EmbeddingDimensions,
+                            queryLogMetrics.RetrieveTop,
+                            queryLogMetrics.ResultCount,
+                            queryLogMetrics.FilteredCount,
+                            contextChunks.Count);
+                    }
+                    else
+                    {
+                        NetIndexPipelineLogger.LogGenerateCanceled(_logger, sw.ElapsedMilliseconds, tenantId);
+                    }
                 }
             }
-            generateActivity?.Dispose();
+            finally
+            {
+                generateActivity?.Dispose();
+            }
         }
     }
 
