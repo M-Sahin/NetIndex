@@ -12,9 +12,15 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Tesseract/NetIndex.Ingestion.Tesseract.csproj" />
+    <ProjectReference Include="../../src/Core/NetIndex.Core/NetIndex.Core.csproj" />
     <ProjectReference Include="../NetIndex.Testing.Common/NetIndex.Testing.Common.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Fixtures/*" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,4 @@
+# SHA-256 fixture manifest. These files are immutable native-test inputs.
+59b352e8dfe9b72efee6cf66226a02655e111df000faee1cd77802aa00c15090  sample-gray.png
+121bb10d3679ece4319ad9233f117b1a562c39436048c76a8b13aeda5fc2ac04  scanned-one-page.pdf
+52383a24e43085f7cb1c6ca51dd28fab5d8d9de8247657d2debb34072e259ee0  scanned-two-page.pdf

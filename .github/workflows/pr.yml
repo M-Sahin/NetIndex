@@ -12,7 +12,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
-          
+
       - name: Restore dependencies
         run: dotnet restore
 
@@ -20,7 +20,7 @@ jobs:
         run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=true
 
       - name: Run Unit Tests
-        run: dotnet test --no-build --configuration Release --logger trx --results-directory results --filter "Category!=ArchContract&Category!=SecurityContract&Category!=PipelineContract&Category!=ContractTest&Category!=Integration&Category!=Evaluation&Category!=Benchmark"
+        run: dotnet test --no-build --configuration Release --logger trx --results-directory results --filter "Category!=ArchContract&Category!=SecurityContract&Category!=PipelineContract&Category!=ContractTest&Category!=Integration&Category!=Evaluation&Category!=Benchmark&Category!=OcrNative&Category!=OcrNativeMissing"
 
       - name: Run Architecture Contract Tests
         run: dotnet test --no-build --configuration Release --logger trx --results-directory results --filter "Category=ArchContract"
@@ -37,3 +37,135 @@ jobs:
         with:
           name: test-results
           path: results/
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Native OCR matrix: runs on real Tesseract installation
+  # fail-fast disabled so both lanes complete even if one fails
+  # ───────────────────────────────────────────────────────────────────────────
+  ocr-native:
+    name: OCR Native (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-24.04, windows-2025 ]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore and build
+        run: |
+          dotnet restore
+          dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=true
+
+      # ── Linux prerequisites ────────────────────────────────────────────────
+      - name: Install Tesseract and Leptonica (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y tesseract-ocr libtesseract-dev libleptonica-dev
+          sudo ldconfig
+          echo "Tesseract version: $(tesseract --version 2>&1 | head -1)"
+          OCR_BIN="tests/NetIndex.Ingestion.Tesseract.Tests/bin/Release/net9.0/x64"
+          TESS_LIB="$(ldconfig -p | awk '/libtesseract.so/{print $NF; exit}')"
+          LEPT_LIB="$(ldconfig -p | awk '/liblept.so/{print $NF; exit}')"
+          test -n "$TESS_LIB" && test -n "$LEPT_LIB"
+          mkdir -p "$OCR_BIN"
+          ln -sf "$TESS_LIB" "$OCR_BIN/libtesseract55.dll.so"
+          ln -sf "$LEPT_LIB" "$OCR_BIN/libleptonica-1.85.0.dll.so"
+          ls -l "$OCR_BIN"/*.so
+          echo "ldd libtesseract: $(ldconfig -p | grep libtesseract || true)"
+
+      - name: Provision tessdata (Linux)
+        if: runner.os == 'Linux'
+        env:
+          # Pin eng.traineddata from tessdata_fast at a specific commit.
+          # Checksum is committed here and must change with the immutable revision.
+          TESSDATA_URL: https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/b893ed3917f4eb4f3f08a79b1b58fe95097a7473/eng.traineddata
+          TESSDATA_SHA256: 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+        run: |
+          mkdir -p /tmp/tessdata
+          curl -fsSL "$TESSDATA_URL" -o /tmp/tessdata/eng.traineddata
+          echo "$TESSDATA_SHA256  /tmp/tessdata/eng.traineddata" | sha256sum -c -
+          echo "TESSDATA_PREFIX=/tmp/tessdata" >> "$GITHUB_ENV"
+          echo "eng.traineddata SHA-256: $(sha256sum /tmp/tessdata/eng.traineddata)"
+
+      # ── Windows prerequisites ──────────────────────────────────────────────
+      - name: Provision tessdata (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TESSDATA_URL: https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/b893ed3917f4eb4f3f08a79b1b58fe95097a7473/eng.traineddata
+          TESSDATA_SHA256: 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+        run: |
+          $dir = "$env:TEMP\tessdata"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Invoke-WebRequest -Uri $env:TESSDATA_URL -OutFile "$dir\eng.traineddata"
+          $hash = (Get-FileHash "$dir\eng.traineddata" -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:TESSDATA_SHA256.ToLower()) {
+            Write-Error "SHA-256 mismatch: got $hash"
+            exit 1
+          }
+          echo "TESSDATA_PREFIX=$dir" >> $env:GITHUB_ENV
+          Write-Host "eng.traineddata SHA-256: $(Get-FileHash "$dir\eng.traineddata" -Algorithm SHA256).Hash"
+
+      - name: Run OCR native tests
+        run: dotnet test --no-build --configuration Release --logger trx --results-directory ocr-results --filter "Category=OcrNative"
+        env:
+          TESSDATA_PREFIX: ${{ env.TESSDATA_PREFIX }}
+
+      - name: Emit native diagnostics (Linux)
+        if: runner.os == 'Linux' && always()
+        run: |
+          echo "=== Tesseract version ==="
+          tesseract --version 2>&1 || true
+          echo "=== Loader aliases ==="
+          ldconfig -p | grep -E 'libtess|liblept' || true
+
+      - name: Upload OCR test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ocr-native-results-${{ matrix.os }}
+          path: ocr-results/
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Missing-native job: verifies directed exception on clean Linux
+  # ───────────────────────────────────────────────────────────────────────────
+  ocr-native-missing:
+    name: OCR Missing Native (clean Linux)
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore and build
+        run: |
+          dotnet restore
+          dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=true
+
+      - name: Verify Tesseract is NOT installed
+        run: |
+          if command -v tesseract &>/dev/null; then
+            echo "ERROR: Tesseract is installed on this runner — this job requires a clean environment."
+            exit 1
+          fi
+          echo "Confirmed: Tesseract is not present."
+
+      - name: Run missing-native tests
+        run: dotnet test --no-build --configuration Release --logger trx --results-directory missing-results --filter "Category=OcrNativeMissing"
+
+      - name: Upload missing-native results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ocr-missing-native-results
+          path: missing-results/

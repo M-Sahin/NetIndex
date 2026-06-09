@@ -5,13 +5,26 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="../../Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="TesseractOCR" />
+    <PackageReference Include="PDFtoImage" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+  <!-- Allow the test project to access internal adapters for managed (non-native) testing -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="NetIndex.Ingestion.Tesseract.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <Title>NetIndex Tesseract OCR Ingestion</Title>
-    <Description>Tesseract OCR document loader for NetIndex, extracting text from images and scanned documents for embedding.</Description>
+    <Description>Tesseract OCR support for NetIndex, extracting text from scanned PDFs via rasterization and recognition without adding native dependencies to applications that do not need OCR.</Description>
     <PackageTags>rag;netindex;ingestion;ocr;tesseract</PackageTags>
   </PropertyGroup>
 </Project>

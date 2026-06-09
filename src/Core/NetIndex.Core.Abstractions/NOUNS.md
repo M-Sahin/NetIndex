@@ -26,6 +26,7 @@ This registry maps canonical nouns to their corresponding interfaces, types, and
 | 18 | Metadata | `TMetadata` | Generic | Document-attached custom data | Preserves user context |
 | 19 | Scope | Folder structure | src/{Category}/ | Logical grouping (Core, Providers, Storage) | `src/Core/`, `src/Providers/Ollama/` |
 | 20 | Exception | `NetIndex{Concern}Exception` | Core.Abstractions | Typed error with context | Hierarchy: Config, Auth, Provider, Storage, OCR |
+| 21 | Extractor | `IVisionExtractor` | Core.Abstractions | OCR contract for image/scanned-PDF text extraction | `Use{Feature}(...)` extension in provider package |
 
 ## Naming Rules
 

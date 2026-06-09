@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using NetIndex.Core.Abstractions;
 using NetIndex.Ingestion.Pdf.Loaders;
 using NetIndex.Ingestion.Pdf.Options;
@@ -15,6 +16,10 @@ public static class NetIndexBuilderExtensions
     /// <summary>
     /// Registers <see cref="PdfDocumentLoader"/> as the <see cref="IDocumentLoader{PdfFormat}"/> implementation.
     /// </summary>
+    /// <remarks>
+    /// When <see cref="IVisionExtractor"/> is also registered (e.g., via <c>.UseTesseract()</c>), it is
+    /// automatically injected into the loader and used for scanned PDFs.
+    /// </remarks>
     /// <param name="builder">The <see cref="INetIndexBuilder"/> to configure.</param>
     /// <param name="configure">Optional delegate to configure <see cref="PdfDocumentLoaderOptions"/>.</param>
     /// <returns>The same <see cref="INetIndexBuilder"/> for fluent chaining.</returns>
@@ -27,7 +32,10 @@ public static class NetIndexBuilderExtensions
         {
             builder.Services.Configure<PdfDocumentLoaderOptions>(configure);
         }
-        builder.Services.TryAddSingleton<IDocumentLoader<PdfFormat>, PdfDocumentLoader>();
+        builder.Services.TryAddSingleton<IDocumentLoader<PdfFormat>>(sp =>
+            new PdfDocumentLoader(
+                sp.GetRequiredService<IOptions<PdfDocumentLoaderOptions>>(),
+                sp.GetService<IVisionExtractor>()));
         return builder;
     }
 }

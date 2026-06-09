@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,10 +25,10 @@ public sealed class PdfDocumentLoaderTests
         return assembly.GetManifestResourceStream(resourceName)!;
     }
 
-    private static PdfDocumentLoader CreateLoader(int threshold = 10)
+    private static PdfDocumentLoader CreateLoader(int threshold = 10, IVisionExtractor? extractor = null)
     {
         var options = MsOptions.Options.Create(new PdfDocumentLoaderOptions { MinimumTextPerPageThreshold = threshold });
-        return new PdfDocumentLoader(options);
+        return new PdfDocumentLoader(options, extractor);
     }
 
     private static string WriteTempPdf()
@@ -167,5 +168,145 @@ public sealed class PdfDocumentLoaderTests
         var act = () => loader.LoadAsync(stream, cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    /// <summary>Verifies low-text PDFs rewind and delegate through the managed vision contract.</summary>
+    [Fact]
+    public async Task LoadAsync_LowTextPdf_DelegatesToVisionExtractorAsync()
+    {
+        var extractor = new RecordingVisionExtractor();
+        var loader = CreateLoader(int.MaxValue, extractor);
+        using var stream = GetSamplePdfStream();
+
+        var document = await loader.LoadAsync(stream);
+
+        extractor.CallCount.Should().Be(1);
+        extractor.PositionAtCall.Should().Be(0);
+        extractor.MediaType.Should().Be(MediaTypes.Pdf);
+        document.Content.Should().Be("ocr text");
+        document.Metadata.Should().Contain(new Dictionary<string, string>
+        {
+            ["ocr_engine"] = "tesseract",
+            ["ocr_engine_version"] = "5.test",
+            ["ocr_language"] = "eng",
+            ["ocr_mean_confidence"] = "0.750000",
+            ["ocr_page_count"] = "2",
+            ["ocr_dpi"] = "300",
+        });
+    }
+
+    /// <summary>Verifies text-first extraction does not invoke OCR.</summary>
+    [Fact]
+    public async Task LoadAsync_TextPdf_SkipsVisionExtractorAsync()
+    {
+        var extractor = new RecordingVisionExtractor();
+        var loader = CreateLoader(0, extractor);
+        using var stream = GetSamplePdfStream();
+
+        var document = await loader.LoadAsync(stream);
+
+        document.Content.Should().NotBe("ocr text");
+        extractor.CallCount.Should().Be(0);
+    }
+
+    /// <summary>Verifies OCR file loading preserves source URI and file metadata.</summary>
+    [Fact]
+    public async Task LoadAsync_OcrFromFile_PreservesUriAndMetadataAsync()
+    {
+        var extractor = new RecordingVisionExtractor();
+        var loader = CreateLoader(int.MaxValue, extractor);
+        var path = WriteTempPdf();
+        try
+        {
+            var document = await loader.LoadAsync(path);
+
+            document.SourceUri!.LocalPath.Should().Be(Path.GetFullPath(path));
+            document.Metadata!["file_name"].Should().Be(Path.GetFileName(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    /// <summary>Verifies OCR directory loading retains normal directory behavior.</summary>
+    [Fact]
+    public async Task LoadDirectoryAsync_OcrPdf_YieldsDocumentAsync()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"netindex-pdf-dir-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "scan.pdf");
+        using (var source = GetSamplePdfStream())
+        using (var destination = File.Create(path))
+        {
+            await source.CopyToAsync(destination);
+        }
+
+        try
+        {
+            var loader = CreateLoader(int.MaxValue, new RecordingVisionExtractor());
+            var documents = new List<IDocument>();
+            await foreach (var document in loader.LoadDirectoryAsync(directory, recursive: false))
+            {
+                documents.Add(document);
+            }
+
+            documents.Should().ContainSingle();
+            documents[0].SourceUri!.LocalPath.Should().Be(path);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>Verifies cancellation raised by the extractor propagates unchanged.</summary>
+    [Fact]
+    public async Task LoadAsync_OcrCancellation_PropagatesAsync()
+    {
+        using var cts = new CancellationTokenSource();
+        var extractor = new RecordingVisionExtractor(() => _ = cts.CancelAsync());
+        var loader = CreateLoader(int.MaxValue, extractor);
+        using var stream = GetSamplePdfStream();
+
+        var act = () => loader.LoadAsync(stream, cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        extractor.CancellationToken.Should().Be(cts.Token);
+    }
+}
+
+internal sealed class RecordingVisionExtractor(Action? onExtract = null) : IVisionExtractor
+{
+    internal int CallCount { get; private set; }
+    internal long PositionAtCall { get; private set; }
+    internal string? MediaType { get; private set; }
+    internal CancellationToken CancellationToken { get; private set; }
+
+    public Task<VisionExtractionResult> ExtractAsync(
+        Stream source,
+        string mediaType,
+        CancellationToken cancellationToken = default)
+    {
+        CallCount++;
+        PositionAtCall = source.Position;
+        MediaType = mediaType;
+        CancellationToken = cancellationToken;
+        onExtract?.Invoke();
+        cancellationToken.ThrowIfCancellationRequested();
+
+        VisionPageResult[] pages =
+        [
+            new(1, "ocr page one", 0.8),
+            new(2, "ocr page two", 0.7),
+        ];
+        return Task.FromResult(new VisionExtractionResult(
+            "ocr text",
+            0.75,
+            pages,
+            "tesseract",
+            "5.test",
+            "eng",
+            300));
     }
 }
