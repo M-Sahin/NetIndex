@@ -57,6 +57,10 @@ public sealed class NetIndexBuilder : INetIndexBuilder
             }))
             {
                 _ = validationProvider.GetRequiredService<IOptions<NetIndexOptions>>().Value;
+                foreach (var validator in validationProvider.GetServices<INetIndexBuildValidator>())
+                {
+                    validator.Validate();
+                }
 
                 // Validate dimension consistency between embedding generator and vector store (FR11).
                 var embeddingGenerator = validationProvider.GetRequiredService<IEmbeddingGenerator>();

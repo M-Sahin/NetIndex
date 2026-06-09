@@ -47,3 +47,93 @@ jobs:
         with:
           name: test-results
           path: results/
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Non-root container smoke: proves OCR works in a containerized environment
+  # when the process is non-root (UID 1000). Prerequisites are installed as root,
+  # then the test is run via runuser to prove no /root dependency.
+  # ───────────────────────────────────────────────────────────────────────────
+  ocr-container-smoke:
+    name: OCR Container Smoke (non-root)
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:24.04
+
+    steps:
+      - name: Install system prerequisites (as root)
+        run: |
+          apt-get update -y
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            tesseract-ocr libtesseract-dev libleptonica-dev \
+            curl ca-certificates sudo gosu
+          ldconfig
+          echo "Tesseract version: $(tesseract --version 2>&1 | head -1)"
+
+      - name: Create non-root test user
+        run: |
+          useradd -m -s /bin/bash -u 1001 testrunner
+          echo "Created user: $(id testrunner)"
+
+      - name: Provision tessdata (accessible to test user)
+        env:
+          TESSDATA_URL: https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/b893ed3917f4eb4f3f08a79b1b58fe95097a7473/eng.traineddata
+          TESSDATA_SHA256: 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+        run: |
+          mkdir -p /opt/tessdata
+          chmod 755 /opt/tessdata
+          curl -fsSL "$TESSDATA_URL" -o /opt/tessdata/eng.traineddata
+          echo "$TESSDATA_SHA256  /opt/tessdata/eng.traineddata" | sha256sum -c -
+          chmod 644 /opt/tessdata/eng.traineddata
+          echo "eng.traineddata SHA-256: $(sha256sum /opt/tessdata/eng.traineddata)"
+          echo "TESSDATA_PREFIX=/opt/tessdata" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore and build
+        run: |
+          dotnet restore
+          dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=true
+
+      - name: Provision wrapper loader aliases
+        run: |
+          OCR_BIN="tests/NetIndex.Ingestion.Tesseract.Tests/bin/Release/net9.0/x64"
+          TESS_LIB="$(ldconfig -p | awk '/libtesseract.so/{print $NF; exit}')"
+          LEPT_LIB="$(ldconfig -p | awk '/liblept.so/{print $NF; exit}')"
+          test -n "$TESS_LIB" && test -n "$LEPT_LIB"
+          mkdir -p "$OCR_BIN"
+          ln -sf "$TESS_LIB" "$OCR_BIN/libtesseract55.dll.so"
+          ln -sf "$LEPT_LIB" "$OCR_BIN/libleptonica-1.85.0.dll.so"
+          ls -l "$OCR_BIN"/*.so
+
+      - name: Run OCR smoke tests as non-root user
+        run: |
+          chown -R testrunner /github/workspace || true
+          DOTNET_ROOT="$(dirname "$(which dotnet)")"
+          gosu testrunner env \
+            HOME=/home/testrunner \
+            TESSDATA_PREFIX=/opt/tessdata \
+            DOTNET_ROOT="$DOTNET_ROOT" \
+            PATH="$PATH" \
+            dotnet test --no-build --configuration Release \
+              --logger trx --results-directory smoke-results \
+              --filter "Category=OcrNative"
+
+      - name: Emit smoke diagnostics
+        if: always()
+        run: |
+          echo "=== Tesseract version ==="
+          tesseract --version 2>&1 || true
+          echo "=== Loader aliases ==="
+          ldconfig -p | grep -E 'libtess|liblept' || true
+          echo "=== Test runner user ==="
+          id testrunner
+
+      - name: Upload smoke results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ocr-container-smoke-results
+          path: smoke-results/

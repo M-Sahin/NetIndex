@@ -56,6 +56,10 @@
     <!-- PDF ingestion -->
     <PackageVersion Include="PdfPig" Version="0.1.14" />
 
+    <!-- Tesseract OCR ingestion -->
+    <PackageVersion Include="TesseractOCR" Version="5.5.2" />
+    <PackageVersion Include="PDFtoImage" Version="5.2.1" />
+
     <!-- DOCX and Markdown ingestion -->
     <PackageVersion Include="DocumentFormat.OpenXml" Version="3.5.1" />
 

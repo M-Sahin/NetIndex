@@ -25,5 +25,8 @@ public static class TestingConstants
 
         /// <summary>Azure OpenAI provider tests: "NetIndex.Providers.AzureOpenAI"</summary>
         public const string AzureOpenAI = "NetIndex.Providers.AzureOpenAI";
+
+        /// <summary>Tesseract OCR native tests (requires Tesseract installed): "NetIndex.Ingestion.Tesseract.Native"</summary>
+        public const string Tesseract = "NetIndex.Ingestion.Tesseract.Native";
     }
 }

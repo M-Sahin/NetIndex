@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -17,31 +18,51 @@ namespace NetIndex.Ingestion.Pdf.Loaders;
 
 /// <summary>
 /// Loads PDF documents by extracting text and metadata using PdfPig.
+/// When extracted text falls below the configured threshold the loader delegates
+/// to an optional <see cref="IVisionExtractor"/> for OCR-based extraction.
 /// </summary>
 public sealed class PdfDocumentLoader : IDocumentLoader<PdfFormat>
 {
     private readonly PdfDocumentLoaderOptions _options;
+    private readonly IVisionExtractor? _visionExtractor;
 
     /// <summary>
-    /// Initializes a new instance of <see cref="PdfDocumentLoader"/>.
+    /// Initializes a new instance of <see cref="PdfDocumentLoader"/> without OCR support.
+    /// This overload exists for binary compatibility; applications that need OCR should
+    /// register <see cref="IVisionExtractor"/> in the DI container (e.g., via
+    /// <c>builder.UseTesseract()</c>) so the two-parameter constructor is used.
     /// </summary>
     /// <param name="options">Loader configuration options.</param>
     public PdfDocumentLoader(IOptions<PdfDocumentLoaderOptions> options)
+        : this(options, extractor: null) { }
+
+    /// <summary>
+    /// Initializes a new instance of <see cref="PdfDocumentLoader"/> with optional OCR support.
+    /// </summary>
+    /// <param name="options">Loader configuration options.</param>
+    /// <param name="extractor">
+    /// Optional vision extractor used when extracted text is below the threshold.
+    /// When <see langword="null"/>, a scanned PDF throws <see cref="NetIndexOcrNotInstalledException"/>.
+    /// </param>
+    public PdfDocumentLoader(IOptions<PdfDocumentLoaderOptions> options, IVisionExtractor? extractor)
     {
         ArgumentNullException.ThrowIfNull(options);
         _options = options.Value;
+        _visionExtractor = extractor;
     }
 
     /// <summary>
     /// Loads a document from the given PDF stream.
-    /// Returns a <see cref="PdfDocument"/> with extracted text and metadata; <see cref="IDocument.SourceUri"/> is <see langword="null"/>.
+    /// Returns a <see cref="Documents.PdfDocument"/> with extracted text and metadata;
+    /// <see cref="IDocument.SourceUri"/> is <see langword="null"/>.
     /// </summary>
     /// <param name="stream">The raw PDF stream to parse.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A populated <see cref="IDocument"/> with extracted text and metadata.</returns>
     /// <exception cref="NetIndexOcrNotInstalledException">
-    /// Thrown when the average characters per page falls below <see cref="PdfDocumentLoaderOptions.MinimumTextPerPageThreshold"/>,
-    /// indicating a scanned PDF that requires OCR.
+    /// Thrown when the average characters per page falls below
+    /// <see cref="PdfDocumentLoaderOptions.MinimumTextPerPageThreshold"/> and no
+    /// <see cref="IVisionExtractor"/> is configured.
     /// </exception>
     public Task<IDocument> LoadAsync(Stream stream, CancellationToken cancellationToken = default)
     {
@@ -127,15 +148,36 @@ public sealed class PdfDocumentLoader : IDocumentLoader<PdfFormat>
         var averageCharsPerPage = pageCount > 0 ? fullText.Length / pageCount : 0;
         if (pageCount > 0 && averageCharsPerPage < _options.MinimumTextPerPageThreshold)
         {
-            throw new NetIndexOcrNotInstalledException(
-                "PDF appears to contain scanned images with no extractable text. Add NetIndex.Ingestion.Tesseract for OCR support.",
-                requiredPackage: "NetIndex.Ingestion.Tesseract",
-                installInstructions: "dotnet add package NetIndex.Ingestion.Tesseract");
+            if (_visionExtractor is null)
+            {
+                throw new NetIndexOcrNotInstalledException(
+                    "PDF appears to contain scanned images with no extractable text. Add NetIndex.Ingestion.Tesseract for OCR support.",
+                    requiredPackage: "NetIndex.Ingestion.Tesseract",
+                    installInstructions: "dotnet add package NetIndex.Ingestion.Tesseract");
+            }
+
+            ms.Position = 0;
+            var ocrResult = await _visionExtractor
+                .ExtractAsync(ms, MediaTypes.Pdf, cancellationToken)
+                .ConfigureAwait(false);
+
+            var ocrMeta = BuildBaseMetadata(pageCount, info, extraMetadata);
+            AddOcrMetadata(ocrMeta, ocrResult);
+            return new PdfDocument(Guid.NewGuid().ToString("N"), ocrResult.Text, ocrMeta, sourceUri);
         }
 
+        var dict = BuildBaseMetadata(pageCount, info, extraMetadata);
+        return new PdfDocument(Guid.NewGuid().ToString("N"), fullText, dict, sourceUri);
+    }
+
+    private static Dictionary<string, string> BuildBaseMetadata(
+        int pageCount,
+        UglyToad.PdfPig.Content.DocumentInformation info,
+        Dictionary<string, string>? extraMetadata)
+    {
         var dict = new Dictionary<string, string>
         {
-            ["page_count"] = pageCount.ToString()
+            ["page_count"] = pageCount.ToString(CultureInfo.InvariantCulture)
         };
         AddIfPresent(dict, "title", info.Title);
         AddIfPresent(dict, "author", info.Author);
@@ -149,8 +191,17 @@ public sealed class PdfDocumentLoader : IDocumentLoader<PdfFormat>
                 dict[key] = value;
             }
         }
+        return dict;
+    }
 
-        return new PdfDocument(Guid.NewGuid().ToString("N"), fullText, dict, sourceUri);
+    private static void AddOcrMetadata(Dictionary<string, string> dict, VisionExtractionResult ocrResult)
+    {
+        dict["ocr_engine"] = ocrResult.EngineName;
+        dict["ocr_engine_version"] = ocrResult.EngineVersion;
+        dict["ocr_language"] = ocrResult.Language;
+        dict["ocr_mean_confidence"] = ocrResult.MeanConfidence.ToString("F6", CultureInfo.InvariantCulture);
+        dict["ocr_page_count"] = ocrResult.Pages.Count.ToString(CultureInfo.InvariantCulture);
+        dict["ocr_dpi"] = ocrResult.RasterizationDpi.ToString(CultureInfo.InvariantCulture);
     }
 
     private static void AddIfPresent(Dictionary<string, string> dict, string key, string? value)

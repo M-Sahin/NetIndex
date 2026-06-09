@@ -8,7 +8,7 @@ dotnet add package NetIndex.Ingestion.Pdf
 
 ```csharp
 services.AddNetIndex(builder => builder
-    .UsePdfLoader()
+    .UsePdfDocumentLoader()
     .Build());
 ```
 
