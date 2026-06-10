@@ -28,5 +28,8 @@ public static class TestingConstants
 
         /// <summary>Tesseract OCR native tests (requires Tesseract installed): "NetIndex.Ingestion.Tesseract.Native"</summary>
         public const string Tesseract = "NetIndex.Ingestion.Tesseract.Native";
+
+        /// <summary>Tesseract managed tests that mutate the process-global TESSDATA_PREFIX env var: "NetIndex.Ingestion.Tesseract.OptionsEnv"</summary>
+        public const string TesseractOptionsEnv = "NetIndex.Ingestion.Tesseract.OptionsEnv";
     }
 }

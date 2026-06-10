@@ -3,13 +3,17 @@ using System.IO;
 using FluentAssertions;
 using Microsoft.Extensions.Options;
 using NetIndex.Ingestion.Tesseract.Options;
+using NetIndex.Testing.Common;
 using Xunit;
 
 namespace NetIndex.Ingestion.Tesseract.Tests.Options;
 
 /// <summary>
 /// Managed tests for <see cref="TesseractOptionsValidator"/>. No native library required.
+/// Mutates the process-global TESSDATA_PREFIX env var, so it runs in a non-parallel collection
+/// to avoid leaking into tests that resolve options concurrently.
 /// </summary>
+[Collection(TestingConstants.Collections.TesseractOptionsEnv)]
 public sealed class TesseractOptionsValidatorTests : IDisposable
 {
     private readonly string _tempDir;

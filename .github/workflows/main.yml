@@ -67,6 +67,14 @@ jobs:
             tesseract-ocr libtesseract-dev libleptonica-dev \
             curl ca-certificates sudo gosu
           ldconfig
+          # TesseractOCR's InteropDotNet loader P/Invokes the bare name `libdl`
+          # to obtain dlopen. Ubuntu 24.04 merged dl into glibc and ships only
+          # libdl.so.2, so the unversioned libdl.so the loader resolves is
+          # absent in a bare container — provide the dev symlink. (The hosted
+          # ubuntu-24.04 image already has it, which is why pr.yml passes.)
+          DL_LIB="$(ldconfig -p | awk '/libdl.so.2/{print $NF; exit}')"
+          test -n "$DL_LIB"
+          ln -sf "$DL_LIB" /usr/lib/x86_64-linux-gnu/libdl.so
           echo "Tesseract version: $(tesseract --version 2>&1 | head -1)"
 
       - name: Create non-root test user
