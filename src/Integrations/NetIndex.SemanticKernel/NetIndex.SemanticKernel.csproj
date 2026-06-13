@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SemanticKernel.Core" />
+    <ProjectReference Include="../../Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="NetIndex.SemanticKernel.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex Semantic Kernel Plugin</Title>
+    <Description>Semantic Kernel KernelPlugin adapter for NetIndex, exposing RAG retrieval, ingestion, and generation as agent-callable tools.</Description>
+    <PackageTags>rag;netindex;semantic-kernel;plugin;agents</PackageTags>
+  </PropertyGroup>
+</Project>

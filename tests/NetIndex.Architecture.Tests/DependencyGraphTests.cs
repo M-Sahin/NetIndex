@@ -1,5 +1,6 @@
 using NetArchTest.Rules;
 using System.Reflection;
+using System.Xml.Linq;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -79,6 +80,28 @@ public class DependencyGraphTests
 
         Assert.False(hasForbiddenReference, ruleDescription);
     }
+
+    private static string FindRepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "NetIndex.sln")))
+            {
+                return dir.FullName;
+            }
+
+            dir = dir.Parent;
+        }
+
+        throw new InvalidOperationException("Cannot locate repo root (NetIndex.sln not found)");
+    }
+
+    private static IEnumerable<string> EnumerateCsprojsUnder(string baseDir)
+        => Directory.EnumerateFiles(baseDir, "*.csproj", SearchOption.AllDirectories)
+                    .Where(static p => !p.Contains("/bin/") && !p.Contains("/obj/")
+                                    && !p.Contains("\\bin\\") && !p.Contains("\\obj\\")
+                                    && !p.Contains("/content/") && !p.Contains("\\content\\"));
 
     // ─── AC3: Core.Abstractions must be completely independent ───
 
@@ -265,6 +288,112 @@ public class DependencyGraphTests
     public void AspNetCore_ShouldNot_DependOn_Ingestion()
     {
         AssertNoDependency("NetIndex.AspNetCore", "NetIndex.Ingestion", "AspNetCore should not depend on Ingestion");
+    }
+
+    // ─── Epic 8: Integrations.* depend only on Core.Abstractions ───
+
+    [Fact]
+    public void SemanticKernel_ShouldNot_DependOn_Core()
+    {
+        AssertNoAssemblyReference("NetIndex.SemanticKernel",
+            "NetIndex.Core",
+            "SemanticKernel should not reference NetIndex.Core assembly");
+    }
+
+    [Fact]
+    public void SemanticKernel_ShouldNot_DependOn_AspNetCoreOrSiblingPackages()
+    {
+        AssertNoDependencies(
+            "NetIndex.SemanticKernel",
+            ["NetIndex.AspNetCore", "NetIndex.Providers", "NetIndex.Storage", "NetIndex.Ingestion"],
+            "SemanticKernel should not depend on AspNetCore, Providers, Storage, or Ingestion");
+    }
+
+    [Fact]
+    public void ExistingPackages_ShouldNot_DependOn_SemanticKernel()
+    {
+        var assemblies = new[]
+        {
+            "NetIndex.Core.Abstractions", "NetIndex.Core", "NetIndex.AspNetCore",
+            "NetIndex.Providers.OpenAI", "NetIndex.Providers.Ollama", "NetIndex.Providers.AzureOpenAI",
+            "NetIndex.Storage.InMemory", "NetIndex.Storage.Sqlite", "NetIndex.Storage.Pgvector",
+            "NetIndex.Ingestion.Pdf", "NetIndex.Ingestion.Docx", "NetIndex.Ingestion.Markdown",
+            "NetIndex.Ingestion.Tesseract", "NetIndex.Ingestion"
+        };
+
+        foreach (var assembly in assemblies)
+        {
+            AssertNoDependency(assembly, "NetIndex.SemanticKernel", $"{assembly} should not depend on NetIndex.SemanticKernel");
+        }
+    }
+
+    [Fact]
+    public void SemanticKernelCsproj_ReferencesOnlyCoreAbstractionsProject()
+    {
+        var root = FindRepoRoot();
+        var csprojPath = Path.Combine(root, "src", "Integrations", "NetIndex.SemanticKernel", "NetIndex.SemanticKernel.csproj");
+        var xml = XDocument.Load(csprojPath);
+
+        var projectReferences = xml.Descendants()
+            .Where(e => e.Name.LocalName == "ProjectReference")
+            .Select(e => e.Attribute("Include")?.Value)
+            .ToList();
+
+        Assert.Single(projectReferences);
+        Assert.EndsWith("NetIndex.Core.Abstractions.csproj", projectReferences[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SemanticKernelCsproj_ReferencesOnlySemanticKernelCorePackage()
+    {
+        var root = FindRepoRoot();
+        var csprojPath = Path.Combine(root, "src", "Integrations", "NetIndex.SemanticKernel", "NetIndex.SemanticKernel.csproj");
+        var xml = XDocument.Load(csprojPath);
+
+        var semanticKernelPackages = xml.Descendants()
+            .Where(e => e.Name.LocalName == "PackageReference")
+            .Select(e => e.Attribute("Include")?.Value)
+            .Where(include => include is not null && include.StartsWith("Microsoft.SemanticKernel", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Single(semanticKernelPackages);
+        Assert.Equal("Microsoft.SemanticKernel.Core", semanticKernelPackages[0]);
+    }
+
+    [Fact]
+    public void NoOtherProjectCsproj_ReferencesSemanticKernelPackagesOrProject()
+    {
+        var root = FindRepoRoot();
+        var csprojs = EnumerateCsprojsUnder(Path.Combine(root, "src"))
+            .Concat(EnumerateCsprojsUnder(Path.Combine(root, "templates")))
+            .Where(path => Path.GetFileNameWithoutExtension(path) != "NetIndex.SemanticKernel")
+            .ToList();
+
+        Assert.NotEmpty(csprojs);
+
+        var violations = new List<string>();
+        foreach (var path in csprojs)
+        {
+            var xml = XDocument.Load(path);
+
+            var hasSemanticKernelPackage = xml.Descendants()
+                .Where(e => e.Name.LocalName == "PackageReference")
+                .Select(e => e.Attribute("Include")?.Value)
+                .Any(include => include is not null && include.StartsWith("Microsoft.SemanticKernel", StringComparison.Ordinal));
+
+            var hasSemanticKernelProjectReference = xml.Descendants()
+                .Where(e => e.Name.LocalName == "ProjectReference")
+                .Select(e => e.Attribute("Include")?.Value)
+                .Any(include => include is not null && include.Contains("NetIndex.SemanticKernel", StringComparison.Ordinal));
+
+            if (hasSemanticKernelPackage || hasSemanticKernelProjectReference)
+            {
+                violations.Add(path.Replace(root, ""));
+            }
+        }
+
+        Assert.True(violations.Count == 0,
+            $"csproj(s) outside NetIndex.SemanticKernel must not reference Semantic Kernel packages or the SemanticKernel project:\n  {string.Join("\n  ", violations)}");
     }
 
     // ─── Test context helper ───

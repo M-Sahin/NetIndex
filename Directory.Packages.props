@@ -72,5 +72,8 @@
     <!-- Property-based testing -->
     <PackageVersion Include="FsCheck" Version="2.16.6" />
     <PackageVersion Include="FsCheck.Xunit" Version="2.16.6" />
+
+    <!-- Semantic Kernel integration -->
+    <PackageVersion Include="Microsoft.SemanticKernel.Core" Version="1.77.0" />
   </ItemGroup>
 </Project>

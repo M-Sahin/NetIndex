@@ -57,6 +57,7 @@ dotnet build NetIndex.sln
 - **Core**: `NetIndex.Core.Abstractions` (zero external dependencies)
 - **Providers & Storage**: Reference only `Core.Abstractions`
 - **AspNetCore**: References `Core.Abstractions` and `Core`
+- **Integrations**: Reference only `Core.Abstractions` (e.g. `NetIndex.SemanticKernel`)
 - **Tests**: One project per src project, use xUnit + NSubstitute
 
 ### Testing
@@ -94,6 +95,7 @@ Core.Abstractions → System.* only
     Providers.* (Ollama, OpenAI, AzureOpenAI)
     Storage.* (InMemory, Sqlite, Pgvector)
     Ingestion.* (Pdf, Docx, Tesseract)
+    Integrations.* (SemanticKernel)
 ```
 
 Violations fail the PR gate. Use `NetArchTest.Rules` to verify in tests.
