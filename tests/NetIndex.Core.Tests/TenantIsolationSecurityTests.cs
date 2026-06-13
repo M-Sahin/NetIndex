@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using NetIndex.Core;
 using NetIndex.Core.Abstractions;
+using NetIndex.Core.Options;
 using NSubstitute;
 using Xunit;
 
@@ -197,6 +198,101 @@ public sealed class TenantIsolationSecurityTests
         Assert.Equal("a-1", capturedContext[0].Id);
     }
 
+    [Fact]
+    public async Task QueryAsync_WithReranker_FiltersForeignAndUntaggedChunksBeforeRerankingAsync()
+    {
+        var mocks = BuildMocksWithTenant("tenant-a");
+        var pipeline = BuildPipeline(mocks, includeReranker: true);
+
+        mocks.MockEmbedding.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new float[384]));
+
+        var tenantAChunk = MakeChunk("a-1", "tenant-a");
+        var tenantBChunk = MakeChunk("b-1", "tenant-b");
+        var untaggedChunk = new RagChunk("no-tag-1", "text", new float[384], "doc-x", null);
+        mocks.MockStore.QueryAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(StreamSearchResultsAsync(
+                (tenantAChunk, 0.9f, "doc-a"),
+                (tenantBChunk, 0.8f, "doc-b"),
+                (untaggedChunk, 0.7f, "doc-x")));
+
+        List<SearchResult<RagChunk>>? capturedRerankerInput = null;
+        mocks.MockReranker.RerankAsync(
+                Arg.Any<IEnumerable<SearchResult<RagChunk>>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var rerankerInput = callInfo.ArgAt<IEnumerable<SearchResult<RagChunk>>>(0).ToList();
+                capturedRerankerInput = rerankerInput;
+                return Task.FromResult<IEnumerable<SearchResult<RagChunk>>>(rerankerInput);
+            });
+
+        var results = new List<SearchResult<RagChunk>>();
+        await foreach (var result in pipeline.QueryAsync("query"))
+        {
+            results.Add(result);
+        }
+
+        Assert.NotNull(capturedRerankerInput);
+        Assert.Single(capturedRerankerInput);
+        Assert.Equal("a-1", capturedRerankerInput[0].Item.Id);
+        Assert.Single(results);
+        Assert.Equal("a-1", results[0].Item.Id);
+    }
+
+    [Fact]
+    public async Task QueryAsync_WithReranker_PassesFullFilteredPoolUncapped_ThenHonorsOrderAndCapsAfterAsync()
+    {
+        var mocks = BuildMocksWithTenant("tenant-a");
+        var pipeline = BuildPipeline(mocks, includeReranker: true);
+
+        mocks.MockEmbedding.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new float[384]));
+
+        // 7 tenant-a chunks survive filtering (> DefaultQueryTop = 5), returned by the store in
+        // descending store-score order a-0 .. a-6. A single tenant-b chunk must be filtered out.
+        var items = new List<(RagChunk, float, string)>();
+        for (var i = 0; i < 7; i++)
+        {
+            items.Add((MakeChunk($"a-{i}", "tenant-a"), 0.90f - i * 0.01f, "doc-a"));
+        }
+        items.Add((MakeChunk("b-1", "tenant-b"), 0.50f, "doc-b"));
+        mocks.MockStore.QueryAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(StreamSearchResultsAsync(items.ToArray()));
+
+        // Reranker reverses its input. This makes the reranker's order (a-6 first) differ from the
+        // store's order (a-0 first), so honoring rerank order is observable in the final yield.
+        List<SearchResult<RagChunk>>? capturedRerankerInput = null;
+        mocks.MockReranker.RerankAsync(
+                Arg.Any<IEnumerable<SearchResult<RagChunk>>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var rerankerInput = callInfo.ArgAt<IEnumerable<SearchResult<RagChunk>>>(0).ToList();
+                capturedRerankerInput = rerankerInput;
+                rerankerInput.Reverse();
+                return Task.FromResult<IEnumerable<SearchResult<RagChunk>>>(rerankerInput);
+            });
+
+        var results = new List<SearchResult<RagChunk>>();
+        await foreach (var result in pipeline.QueryAsync("query"))
+        {
+            results.Add(result);
+        }
+
+        // Full filtered pool (all 7 tenant-a chunks, tenant-b excluded) reaches the reranker uncapped.
+        Assert.NotNull(capturedRerankerInput);
+        Assert.Equal(7, capturedRerankerInput.Count);
+        Assert.All(capturedRerankerInput, r => Assert.StartsWith("a-", r.Item.Id));
+
+        // Results are capped to DefaultQueryTop (5) AFTER reranking, and follow the reranker's
+        // reversed order (a-6, a-5, a-4, a-3, a-2) — not the store's score order (a-0 first).
+        Assert.Equal(TenantFilteringOptions.DefaultQueryTop, results.Count);
+        Assert.Equal(new[] { "a-6", "a-5", "a-4", "a-3", "a-2" }, results.Select(r => r.Item.Id).ToArray());
+    }
+
     // ── Over-fetch anti-starvation: tenant B chunks do not starve tenant A ──
 
     [Fact]
@@ -248,7 +344,7 @@ public sealed class TenantIsolationSecurityTests
         return mocks;
     }
 
-    private static INetIndexPipeline BuildPipeline(MockContext mocks)
+    private static INetIndexPipeline BuildPipeline(MockContext mocks, bool includeReranker = false)
     {
         var services = new ServiceCollection();
         services.AddSingleton<ITenantResolver>(mocks.MockResolver);
@@ -256,6 +352,10 @@ public sealed class TenantIsolationSecurityTests
         services.AddSingleton<IEmbeddingGenerator>(mocks.MockEmbedding);
         services.AddSingleton<IVectorStore>(mocks.MockStore);
         services.AddSingleton<IChatClient>(mocks.MockChat);
+        if (includeReranker)
+        {
+            services.AddSingleton<IDocumentReranker>(mocks.MockReranker);
+        }
         services.AddNetIndex().Build();
         return services.BuildServiceProvider().GetRequiredService<INetIndexPipeline>();
     }
@@ -298,5 +398,6 @@ public sealed class TenantIsolationSecurityTests
         public IEmbeddingGenerator MockEmbedding { get; } = Substitute.For<IEmbeddingGenerator>();
         public IVectorStore MockStore { get; } = Substitute.For<IVectorStore>();
         public IChatClient MockChat { get; } = Substitute.For<IChatClient>();
+        public IDocumentReranker MockReranker { get; } = Substitute.For<IDocumentReranker>();
     }
 }
