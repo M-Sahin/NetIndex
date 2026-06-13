@@ -28,5 +28,6 @@
     <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Markdown/NetIndex.Ingestion.Markdown.csproj" />
     <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion.Tesseract/NetIndex.Ingestion.Tesseract.csproj" />
     <ProjectReference Include="../../src/Ingestion/NetIndex.Ingestion/NetIndex.Ingestion.csproj" />
+    <ProjectReference Include="../../src/Integrations/NetIndex.SemanticKernel/NetIndex.SemanticKernel.csproj" />
   </ItemGroup>
 </Project>

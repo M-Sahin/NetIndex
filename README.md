@@ -109,6 +109,8 @@ NetIndex.Ingestion.Markdown   — Markdown with YAML frontmatter extraction
 NetIndex.Ingestion.Tesseract  — OCR for scanned documents
 
 NetIndex.AspNetCore           — middleware, hosted services, HttpContext tenant resolver
+
+NetIndex.SemanticKernel       — registers NetIndex as a Semantic Kernel KernelPlugin
 ```
 
 ## Observability
@@ -128,7 +130,7 @@ Span names follow the `netindex.{stage}` convention: `netindex.ingest`, `netinde
 
 The `VectorStoreContractSuite` base class validates the full `IVectorStore` contract — empty queries, upsert/query round-trips, idempotent upserts, cancellation, dimension mismatch errors, and reset semantics. Inherit it to test any new storage backend automatically.
 
-Architecture dependency rules are enforced at every PR via NetArchTest. Sibling layers (Providers, Storage, Ingestion) must never reference each other.
+Architecture dependency rules are enforced at every PR via NetArchTest. Sibling layers (Providers, Storage, Ingestion, Integrations) must never reference each other.
 
 ```bash
 dotnet test NetIndex.sln                            # all tests
@@ -147,7 +149,7 @@ dotnet test NetIndex.sln --filter "Category=ArchContract|Category=SecurityContra
 - [x] Multi-tenant auth with deny-all default
 - [x] OpenTelemetry tracing, typed exception hierarchy
 - [x] ASP.NET Core integration, contract test suite
-- [ ] Semantic Kernel integration
+- [x] Semantic Kernel integration
 - [ ] RAG evaluation harness
 
 **V2 — 2026+**
