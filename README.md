@@ -19,9 +19,9 @@ Think LlamaIndex or LangChain, but built from the ground up for .NET — not a p
 
 ```csharp
 services.AddNetIndex(builder => builder
-    .UseOllamaEmbedding("http://localhost:11434", "nomic-embed-text")
-    .UseSqliteVectorStore("Data Source=vectors.db")
-    .UseFixedSizeChunking(opts => opts.ChunkSize = 512)
+    .UseOllama(opts => { opts.BaseUrl = "http://localhost:11434"; opts.EmbeddingModel = "nomic-embed-text"; })
+    .UseSqlite("Data Source=vectors.db")
+    .UseChunking(opts => opts.ChunkSize = 512)
     .Build());
 ```
 
@@ -29,9 +29,17 @@ services.AddNetIndex(builder => builder
 
 ```csharp
 services.AddNetIndex(builder => builder
-    .UseAzureOpenAIEmbedding(opts => opts.Endpoint = "https://corp.openai.azure.com/")
+    .UseAzureOpenAI(opts => opts.Endpoint = new Uri("https://corp.openai.azure.com/"))
     .UsePgvector(builder.Configuration.GetConnectionString("Postgres"))
-    .UseRecursiveChunking()
+    .Build());
+```
+
+**Standard OpenAI** (any cloud or on-premises):
+
+```csharp
+services.AddNetIndex(builder => builder
+    .UseOpenAI(opts => opts.ApiKey = "sk-...")
+    .UsePgvector(builder.Configuration.GetConnectionString("Postgres"))
     .Build());
 ```
 
