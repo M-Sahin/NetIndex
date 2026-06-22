@@ -396,6 +396,84 @@ public class DependencyGraphTests
             $"csproj(s) outside NetIndex.SemanticKernel must not reference Semantic Kernel packages or the SemanticKernel project:\n  {string.Join("\n  ", violations)}");
     }
 
+    // ─── Epic 8: OpenAI provider csproj boundary ───
+
+    [Fact]
+    public void OpenAICsproj_ReferencesOnlyCoreAbstractionsProject()
+    {
+        var root = FindRepoRoot();
+        var csprojPath = Path.Combine(root, "src", "Providers", "NetIndex.Providers.OpenAI", "NetIndex.Providers.OpenAI.csproj");
+        var xml = XDocument.Load(csprojPath);
+
+        var projectReferences = xml.Descendants()
+            .Where(e => e.Name.LocalName == "ProjectReference")
+            .Select(e => e.Attribute("Include")?.Value)
+            .ToList();
+
+        Assert.Single(projectReferences);
+        Assert.EndsWith("NetIndex.Core.Abstractions.csproj", projectReferences[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OpenAICsproj_ReferencesOnlyApprovedPackages()
+    {
+        var root = FindRepoRoot();
+        var csprojPath = Path.Combine(root, "src", "Providers", "NetIndex.Providers.OpenAI", "NetIndex.Providers.OpenAI.csproj");
+        var xml = XDocument.Load(csprojPath);
+
+        var expectedPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "OpenAI",
+            "Microsoft.Extensions.Configuration.Binder",
+            "Microsoft.Extensions.DependencyInjection.Abstractions",
+            "Microsoft.Extensions.Options",
+            "Microsoft.Extensions.Options.ConfigurationExtensions",
+        };
+
+        var actualPackages = new HashSet<string>(
+            xml.Descendants()
+               .Where(e => e.Name.LocalName == "PackageReference")
+               .Select(e => e.Attribute("Include")?.Value)
+               .Where(name => name is not null)!,
+            StringComparer.OrdinalIgnoreCase);
+
+        var extras = actualPackages.Except(expectedPackages, StringComparer.OrdinalIgnoreCase).ToList();
+        var missing = expectedPackages.Except(actualPackages, StringComparer.OrdinalIgnoreCase).ToList();
+
+        Assert.True(extras.Count == 0 && missing.Count == 0,
+            $"NetIndex.Providers.OpenAI.csproj package references do not match the approved set. " +
+            $"Extra: [{string.Join(", ", extras)}]; Missing: [{string.Join(", ", missing)}]");
+    }
+
+    [Fact]
+    public void NoOtherProjectCsproj_ReferencesOpenAIProviderProject()
+    {
+        var root = FindRepoRoot();
+        var csprojs = EnumerateCsprojsUnder(Path.Combine(root, "src"))
+            .Concat(EnumerateCsprojsUnder(Path.Combine(root, "templates")))
+            .Where(path => Path.GetFileNameWithoutExtension(path) != "NetIndex.Providers.OpenAI")
+            .ToList();
+
+        Assert.NotEmpty(csprojs);
+
+        var violations = new List<string>();
+        foreach (var path in csprojs)
+        {
+            var xml = XDocument.Load(path);
+            var hasRef = xml.Descendants()
+                .Where(e => e.Name.LocalName == "ProjectReference")
+                .Select(e => e.Attribute("Include")?.Value)
+                .Any(include => include is not null && include.Contains("NetIndex.Providers.OpenAI", StringComparison.Ordinal));
+            if (hasRef)
+            {
+                violations.Add(path.Replace(root, ""));
+            }
+        }
+
+        Assert.True(violations.Count == 0,
+            $"csproj(s) outside NetIndex.Providers.OpenAI must not reference the OpenAI provider project:\n  {string.Join("\n  ", violations)}");
+    }
+
     // ─── Test context helper ───
 
     private sealed class TestContext

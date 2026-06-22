@@ -6,12 +6,20 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="OpenAI" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
     <ProjectReference Include="../../Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="NetIndex.Providers.OpenAI.Tests" />
   </ItemGroup>
 
   <PropertyGroup>
     <Title>NetIndex OpenAI Provider</Title>
-    <Description>OpenAI embedding and chat-completion provider for NetIndex, supporting gpt-4o and text-embedding-3 model families.</Description>
+    <Description>Standard OpenAI embedding and chat-completion provider for NetIndex, supporting text-embedding-3 and GPT-4o model families via API key.</Description>
     <PackageTags>rag;netindex;openai;embedding;chat;llm</PackageTags>
   </PropertyGroup>
 </Project>
