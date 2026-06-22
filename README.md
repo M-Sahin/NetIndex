@@ -145,6 +145,17 @@ dotnet test NetIndex.sln                            # all tests
 dotnet test NetIndex.sln --filter "Category=ArchContract|Category=SecurityContract|Category=PipelineContract"  # PR gate only
 ```
 
+### RAG evaluation
+
+`tests/NetIndex.Evaluation.Tests` measures retrieval quality (MRR, NDCG@k) against a version-controlled
+dataset of documents, queries, and relevance judgments, using the real `INetIndexPipeline` with a
+deterministic, offline embedding generator — no API keys, network, or external services required.
+
+```bash
+dotnet test tests/NetIndex.Evaluation.Tests/NetIndex.Evaluation.Tests.csproj                          # fast, untagged metric/fixture tests (PR lane)
+dotnet test tests/NetIndex.Evaluation.Tests/NetIndex.Evaluation.Tests.csproj --filter "Category=Evaluation"  # end-to-end quality gate (nightly-equivalent)
+```
+
 ## Roadmap
 
 **V1 — 2026 (current)**
@@ -158,7 +169,8 @@ dotnet test NetIndex.sln --filter "Category=ArchContract|Category=SecurityContra
 - [x] OpenTelemetry tracing, typed exception hierarchy
 - [x] ASP.NET Core integration, contract test suite
 - [x] Semantic Kernel integration
-- [ ] RAG evaluation harness
+- [x] RAG evaluation harness — retrieval relevance metrics (MRR, NDCG@k)
+- [ ] RAG evaluation harness — answer faithfulness metrics
 
 **V2 — 2026+**
 
