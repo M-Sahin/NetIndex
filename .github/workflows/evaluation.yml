@@ -33,7 +33,10 @@ jobs:
             echo "ERROR: no TRX result files were produced under results/"
             exit 1
           fi
-          if ! grep -l '<UnitTestResult ' "${trx_files[@]}" >/dev/null; then
+          # Match '<UnitTestResult' with no trailing space so the guard is robust to TRX
+          # serialization variants (attributes, self-closing) and matches exactly the token
+          # asserted by EvaluationWorkflowContractTests.GuardsAgainstASilentZeroTestPass.
+          if ! grep -l '<UnitTestResult' "${trx_files[@]}" >/dev/null; then
             echo "ERROR: TRX file(s) contain zero <UnitTestResult> entries — the Evaluation filter matched no tests."
             exit 1
           fi

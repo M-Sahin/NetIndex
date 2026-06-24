@@ -57,6 +57,36 @@ public class RetrievalQualityTests(ITestOutputHelper output)
         }
     }
 
+    // ── Guard: the loader couples ground-truth judgments to the "{documentId}_chunk_0" id format
+    //    produced by the default pass-through chunking. Pin that contract against the REAL pipeline so
+    //    a change to the chunk-id scheme fails loudly here instead of silently zeroing every score. ──
+
+    [Fact]
+    public async Task RealPipeline_PassThroughChunking_ProducesExpectedChunkIdFormatAsync()
+    {
+        const string documentId = "chunk-id-contract-doc";
+        var runner = new RetrievalEvaluationRunner(BuildPipeline());
+
+        await runner.IngestAsync([new RetrievalEvaluationDocument(documentId, "deterministic retrieval evaluation contract content")]);
+
+        var dataset = new RetrievalEvaluationDataset(
+            TopK: 1,
+            Thresholds: new RetrievalEvaluationThresholds(MeanReciprocalRank: 0.0, MeanNdcgAtK: 0.0),
+            Documents: [new RetrievalEvaluationDocument(documentId, "deterministic retrieval evaluation contract content")],
+            Queries:
+            [
+                new RetrievalEvaluationQuery(
+                    "q-contract",
+                    "deterministic retrieval evaluation contract content",
+                    [new RetrievalRelevanceJudgment($"{documentId}_chunk_0", 3)]),
+            ]);
+
+        var report = await runner.EvaluateAsync(dataset);
+
+        var ranked = Assert.Single(report.QueryResults).RankedChunkIds;
+        Assert.Contains($"{documentId}_chunk_0", ranked, StringComparer.Ordinal);
+    }
+
     // ── Task 6: cancellation propagation, proven with a thin test double (not a real pipeline) ──
 
     [Fact]

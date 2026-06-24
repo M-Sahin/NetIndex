@@ -37,6 +37,7 @@ internal sealed class RetrievalEvaluationRunner(INetIndexPipeline pipeline)
         IReadOnlyList<RetrievalEvaluationDocument> documents,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(documents);
         foreach (var document in documents)
         {
             await pipeline.IngestAsync(new EvaluationDocument(document.Id, document.Content), cancellationToken)
@@ -48,6 +49,12 @@ internal sealed class RetrievalEvaluationRunner(INetIndexPipeline pipeline)
         RetrievalEvaluationDataset dataset,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(dataset);
+        if (dataset.Queries is null || dataset.Queries.Count == 0)
+        {
+            throw new InvalidOperationException("Cannot evaluate retrieval over a dataset with zero queries.");
+        }
+
         var queryResults = new List<RetrievalQueryResult>();
         foreach (var query in dataset.Queries)
         {

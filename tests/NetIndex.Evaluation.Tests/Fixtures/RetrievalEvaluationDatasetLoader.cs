@@ -7,8 +7,6 @@ namespace NetIndex.Evaluation.Tests.Fixtures;
 /// </summary>
 internal static class RetrievalEvaluationDatasetLoader
 {
-    private const int MinGrade = 0;
-    private const int MaxGrade = 3;
     private const int MaxTopK = 5;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -26,8 +24,20 @@ internal static class RetrievalEvaluationDatasetLoader
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(json);
 
-        var dataset = JsonSerializer.Deserialize<RetrievalEvaluationDataset>(json, SerializerOptions)
-            ?? throw new InvalidDataException("Evaluation dataset deserialized to null.");
+        RetrievalEvaluationDataset? dataset;
+        try
+        {
+            dataset = JsonSerializer.Deserialize<RetrievalEvaluationDataset>(json, SerializerOptions);
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException("Evaluation dataset is not valid JSON.", ex);
+        }
+
+        if (dataset is null)
+        {
+            throw new InvalidDataException("Evaluation dataset deserialized to null.");
+        }
 
         Validate(dataset);
         return dataset;
@@ -41,9 +51,24 @@ internal static class RetrievalEvaluationDatasetLoader
     {
         ArgumentNullException.ThrowIfNull(query);
 
+        if (query.Relevance is null)
+        {
+            throw new InvalidDataException($"Query '{query.Id}' has a null relevance collection.");
+        }
+
         var lookup = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var judgment in query.Relevance)
         {
+            if (judgment is null)
+            {
+                throw new InvalidDataException($"Query '{query.Id}' has a null relevance judgment entry.");
+            }
+
+            if (string.IsNullOrWhiteSpace(judgment.ChunkId))
+            {
+                throw new InvalidDataException($"Query '{query.Id}' has a relevance judgment with a null or empty chunk Id.");
+            }
+
             if (!lookup.TryAdd(judgment.ChunkId, judgment.Grade))
             {
                 throw new InvalidDataException(
@@ -82,6 +107,11 @@ internal static class RetrievalEvaluationDatasetLoader
         var documentIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var document in dataset.Documents)
         {
+            if (document is null)
+            {
+                throw new InvalidDataException("Evaluation dataset contains a null document entry.");
+            }
+
             if (string.IsNullOrWhiteSpace(document.Id) || string.IsNullOrWhiteSpace(document.Content))
             {
                 throw new InvalidDataException("Every document requires a non-empty Id and Content.");
@@ -101,6 +131,11 @@ internal static class RetrievalEvaluationDatasetLoader
         var queryIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var query in dataset.Queries)
         {
+            if (query is null)
+            {
+                throw new InvalidDataException("Evaluation dataset contains a null query entry.");
+            }
+
             if (string.IsNullOrWhiteSpace(query.Id) || string.IsNullOrWhiteSpace(query.Text))
             {
                 throw new InvalidDataException("Every query requires a non-empty Id and Text.");
@@ -121,10 +156,10 @@ internal static class RetrievalEvaluationDatasetLoader
             var hasPositiveJudgment = false;
             foreach (var (chunkId, grade) in judgmentLookup)
             {
-                if (grade < MinGrade || grade > MaxGrade)
+                if (grade < RelevanceGrade.Min || grade > RelevanceGrade.Max)
                 {
                     throw new InvalidDataException(
-                        $"Query '{query.Id}' judgment for chunk '{chunkId}' has grade {grade}, outside [{MinGrade}, {MaxGrade}].");
+                        $"Query '{query.Id}' judgment for chunk '{chunkId}' has grade {grade}, outside [{RelevanceGrade.Min}, {RelevanceGrade.Max}].");
                 }
 
                 if (!validChunkIds.Contains(chunkId))

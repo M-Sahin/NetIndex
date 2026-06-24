@@ -15,7 +15,7 @@ namespace NetIndex.Evaluation.Tests.TestSupport;
 /// uses <c>string.GetHashCode()</c> or <c>HashCode</c> — both are process-randomized per run and
 /// would make rankings non-reproducible across test runs.
 /// </remarks>
-internal sealed class DeterministicTokenEmbeddingGenerator(int dimensions) : IEmbeddingGenerator
+internal sealed class DeterministicTokenEmbeddingGenerator : IEmbeddingGenerator
 {
     // Closed-class English stopwords carry almost no topical signal but appear in nearly every
     // text; under plain term-frequency cosine they add noise that can outweigh the one or two
@@ -31,16 +31,24 @@ internal sealed class DeterministicTokenEmbeddingGenerator(int dimensions) : IEm
         "before", "after", "up", "down", "out", "about", "between", "through", "during",
     };
 
-    public int Dimensions { get; } = dimensions;
+    public DeterministicTokenEmbeddingGenerator(int dimensions)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(dimensions);
+        Dimensions = dimensions;
+    }
+
+    public int Dimensions { get; }
 
     public Task<float[]> GenerateAsync(string text, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(text);
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(Embed(text));
     }
 
     public async Task<float[][]> GenerateBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(texts);
         var results = new List<float[]>();
         foreach (var text in texts)
         {
