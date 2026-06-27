@@ -11,6 +11,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="sqlite-vec" />
+    <!-- Direct reference promotes the patched native bundle (3.0.3) over the vulnerable 2.1.10
+         transitive of Microsoft.Data.Sqlite 9.0.5 — clears NU1903 (GHSA-2m69-gcr7-jv3q). -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
