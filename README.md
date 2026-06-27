@@ -147,13 +147,19 @@ dotnet test NetIndex.sln --filter "Category=ArchContract|Category=SecurityContra
 
 ### RAG evaluation
 
-`tests/NetIndex.Evaluation.Tests` measures retrieval quality (MRR, NDCG@k) against a version-controlled
-dataset of documents, queries, and relevance judgments, using the real `INetIndexPipeline` with a
-deterministic, offline embedding generator — no API keys, network, or external services required.
+`tests/NetIndex.Evaluation.Tests` runs two offline quality gates against a version-controlled fixture
+using the real `INetIndexPipeline` — no API keys, network, or external services required:
+
+- **Retrieval quality** — MRR and NDCG@k against committed relevance judgments, using a deterministic
+  token-embedding generator that produces stable, lexically-meaningful vectors.
+- **Answer faithfulness** — groundedness score (supported unique answer tokens / total unique answer
+  tokens) against committed faithfulness expectations, using a deterministic chat client that generates
+  answers from retrieved context tokens. Measures whether the generated answer is grounded in what the
+  pipeline actually retrieved, not whether it is complete.
 
 ```bash
-dotnet test tests/NetIndex.Evaluation.Tests/NetIndex.Evaluation.Tests.csproj                          # fast, untagged metric/fixture tests (PR lane)
-dotnet test tests/NetIndex.Evaluation.Tests/NetIndex.Evaluation.Tests.csproj --filter "Category=Evaluation"  # end-to-end quality gate (nightly-equivalent)
+dotnet test tests/NetIndex.Evaluation.Tests/NetIndex.Evaluation.Tests.csproj --filter "Category!=Evaluation"  # fast, untagged metric/fixture tests (PR lane)
+dotnet test tests/NetIndex.Evaluation.Tests/NetIndex.Evaluation.Tests.csproj --filter "Category=Evaluation"   # end-to-end quality gates (nightly-equivalent)
 ```
 
 ## Roadmap
@@ -170,7 +176,7 @@ dotnet test tests/NetIndex.Evaluation.Tests/NetIndex.Evaluation.Tests.csproj --f
 - [x] ASP.NET Core integration, contract test suite
 - [x] Semantic Kernel integration
 - [x] RAG evaluation harness — retrieval relevance metrics (MRR, NDCG@k)
-- [ ] RAG evaluation harness — answer faithfulness metrics
+- [x] RAG evaluation harness — answer faithfulness metrics
 
 **V2 — 2026+**
 

@@ -1,6 +1,10 @@
 {
   "topK": 5,
   "thresholds": { "meanReciprocalRank": 0.8, "meanNdcgAtK": 0.75 },
+  "faithfulnessThresholds": {
+    "meanFaithfulness": 0.85,
+    "minimumPerQueryFaithfulness": 0.65
+  },
   "documents": [
     {
       "id": "doc-overview",
@@ -37,21 +41,30 @@
       "text": "What determines the order that search results come back in?",
       "relevance": [
         { "chunkId": "doc-vector-store_chunk_0", "grade": 3 }
-      ]
+      ],
+      "faithfulness": {
+        "expectedContextChunkIds": ["doc-vector-store_chunk_0"]
+      }
     },
     {
       "id": "q-auth",
       "text": "What happens if a caller never identifies which tenant they belong to?",
       "relevance": [
         { "chunkId": "doc-tenant-auth_chunk_0", "grade": 3 }
-      ]
+      ],
+      "faithfulness": {
+        "expectedContextChunkIds": ["doc-tenant-auth_chunk_0"]
+      }
     },
     {
       "id": "q-chunking",
       "text": "Why would a long document get split into smaller pieces before indexing?",
       "relevance": [
         { "chunkId": "doc-chunking_chunk_0", "grade": 3 }
-      ]
+      ],
+      "faithfulness": {
+        "expectedContextChunkIds": ["doc-chunking_chunk_0"]
+      }
     },
     {
       "id": "q-rerank",
@@ -59,21 +72,30 @@
       "relevance": [
         { "chunkId": "doc-reranking_chunk_0", "grade": 3 },
         { "chunkId": "doc-vector-store_chunk_0", "grade": 1 }
-      ]
+      ],
+      "faithfulness": {
+        "expectedContextChunkIds": ["doc-reranking_chunk_0", "doc-vector-store_chunk_0"]
+      }
     },
     {
       "id": "q-observability",
       "text": "What kind of tracing spans or diagnostic logging does the pipeline emit while it runs?",
       "relevance": [
         { "chunkId": "doc-observability_chunk_0", "grade": 3 }
-      ]
+      ],
+      "faithfulness": {
+        "expectedContextChunkIds": ["doc-observability_chunk_0"]
+      }
     },
     {
       "id": "q-terminology",
       "text": "Where can I look up what ingest, query, and generate actually mean in this project?",
       "relevance": [
         { "chunkId": "doc-glossary_chunk_0", "grade": 3 }
-      ]
+      ],
+      "faithfulness": {
+        "expectedContextChunkIds": ["doc-glossary_chunk_0"]
+      }
     }
   ]
 }
