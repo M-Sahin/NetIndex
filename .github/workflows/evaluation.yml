@@ -22,10 +22,25 @@ jobs:
         run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=true
 
       - name: Run Evaluation Tests
-        run: dotnet test --no-build --configuration Release --logger trx --results-directory results --filter "Category=Evaluation"
-        env:
-          # Evaluation may use external APIs for quality metrics
-          EVALUATION_MODE: true
+        run: dotnet test tests/NetIndex.Evaluation.Tests/NetIndex.Evaluation.Tests.csproj --no-build --configuration Release --logger trx --results-directory results --filter "Category=Evaluation"
+
+      - name: Verify evaluation tests actually ran
+        if: always()
+        run: |
+          shopt -s nullglob
+          trx_files=(results/*.trx)
+          if [ ${#trx_files[@]} -eq 0 ]; then
+            echo "ERROR: no TRX result files were produced under results/"
+            exit 1
+          fi
+          # Match '<UnitTestResult' with no trailing space so the guard is robust to TRX
+          # serialization variants (attributes, self-closing) and matches exactly the token
+          # asserted by EvaluationWorkflowContractTests.GuardsAgainstASilentZeroTestPass.
+          if ! grep -l '<UnitTestResult' "${trx_files[@]}" >/dev/null; then
+            echo "ERROR: TRX file(s) contain zero <UnitTestResult> entries — the Evaluation filter matched no tests."
+            exit 1
+          fi
+          echo "Confirmed: at least one Evaluation-tagged test executed."
 
       - name: Upload evaluation results
         uses: actions/upload-artifact@v4

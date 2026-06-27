@@ -88,6 +88,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetIndex.Template", "templa
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetIndex.Template.Tests", "tests\NetIndex.Template.Tests\NetIndex.Template.Tests.csproj", "{116FF0C7-0901-4A0C-8DDE-9E9FB4AA7AC8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetIndex.Evaluation.Tests", "tests\NetIndex.Evaluation.Tests\NetIndex.Evaluation.Tests.csproj", "{D929E694-890E-43AD-B9D7-34EA51E8F193}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -242,6 +244,10 @@ Global
 		{116FF0C7-0901-4A0C-8DDE-9E9FB4AA7AC8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{116FF0C7-0901-4A0C-8DDE-9E9FB4AA7AC8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{116FF0C7-0901-4A0C-8DDE-9E9FB4AA7AC8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D929E694-890E-43AD-B9D7-34EA51E8F193}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D929E694-890E-43AD-B9D7-34EA51E8F193}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D929E694-890E-43AD-B9D7-34EA51E8F193}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D929E694-890E-43AD-B9D7-34EA51E8F193}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{B234C483-821A-4A57-BAB2-6EF6FADDF6A8} = {5EACFE3A-A356-4467-8C1C-0B49E87BB639}
@@ -258,5 +264,6 @@ Global
 		{116FF0C7-0901-4A0C-8DDE-9E9FB4AA7AC8} = {75EA80A9-6463-4FB8-9ADC-01F43C2902FD}
 		{11111111-1111-1111-1111-111111111501} = {7F3A9D2C-4B5E-4A1F-9C8D-2E6F1A0B3C4D}
 		{22222222-2222-2222-2222-222222222214} = {75EA80A9-6463-4FB8-9ADC-01F43C2902FD}
+		{D929E694-890E-43AD-B9D7-34EA51E8F193} = {75EA80A9-6463-4FB8-9ADC-01F43C2902FD}
 	EndGlobalSection
 EndGlobal

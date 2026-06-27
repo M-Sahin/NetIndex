@@ -1,0 +1,79 @@
+{
+  "topK": 5,
+  "thresholds": { "meanReciprocalRank": 0.8, "meanNdcgAtK": 0.75 },
+  "documents": [
+    {
+      "id": "doc-overview",
+      "content": "NetIndex is a retrieval augmented generation framework built for the dotnet platform. It combines document ingestion, vector search, and streaming language model generation behind a single fluent builder api."
+    },
+    {
+      "id": "doc-vector-store",
+      "content": "The vector store ranks search results by cosine similarity between the query embedding and each stored chunk embedding, returning the most relevant chunks first in descending order."
+    },
+    {
+      "id": "doc-tenant-auth",
+      "content": "Tenant resolution enforces deny all authorization by default. Every pipeline request must resolve a tenant identifier and claims before any ingest, query, or generate operation is permitted."
+    },
+    {
+      "id": "doc-chunking",
+      "content": "Chunking strategies divide long documents into smaller passages using fixed size, recursive, or semantic boundaries before each passage is embedded and stored in the vector store."
+    },
+    {
+      "id": "doc-reranking",
+      "content": "A document reranker can reorder retrieved chunks using a cross encoder model to improve relevance beyond the initial vector similarity ranking produced by the vector store."
+    },
+    {
+      "id": "doc-observability",
+      "content": "OpenTelemetry tracing emits spans for the ingest, query, and generate pipeline stages, enabling distributed tracing dashboards and structured diagnostic logging."
+    },
+    {
+      "id": "doc-glossary",
+      "content": "This glossary defines pipeline terms such as ingest, query, and generate, used throughout the NetIndex framework reference documentation."
+    }
+  ],
+  "queries": [
+    {
+      "id": "q-ranking",
+      "text": "What determines the order that search results come back in?",
+      "relevance": [
+        { "chunkId": "doc-vector-store_chunk_0", "grade": 3 }
+      ]
+    },
+    {
+      "id": "q-auth",
+      "text": "What happens if a caller never identifies which tenant they belong to?",
+      "relevance": [
+        { "chunkId": "doc-tenant-auth_chunk_0", "grade": 3 }
+      ]
+    },
+    {
+      "id": "q-chunking",
+      "text": "Why would a long document get split into smaller pieces before indexing?",
+      "relevance": [
+        { "chunkId": "doc-chunking_chunk_0", "grade": 3 }
+      ]
+    },
+    {
+      "id": "q-rerank",
+      "text": "Is there a way to refine the initial similarity-based ordering of retrieved passages?",
+      "relevance": [
+        { "chunkId": "doc-reranking_chunk_0", "grade": 3 },
+        { "chunkId": "doc-vector-store_chunk_0", "grade": 1 }
+      ]
+    },
+    {
+      "id": "q-observability",
+      "text": "What kind of tracing spans or diagnostic logging does the pipeline emit while it runs?",
+      "relevance": [
+        { "chunkId": "doc-observability_chunk_0", "grade": 3 }
+      ]
+    },
+    {
+      "id": "q-terminology",
+      "text": "Where can I look up what ingest, query, and generate actually mean in this project?",
+      "relevance": [
+        { "chunkId": "doc-glossary_chunk_0", "grade": 3 }
+      ]
+    }
+  ]
+}
