@@ -201,4 +201,191 @@ public class RetrievalEvaluationDatasetLoaderTests
 
         Assert.Throws<InvalidDataException>(() => RetrievalEvaluationDatasetLoader.BuildJudgmentLookup(query));
     }
+
+    // ── Faithfulness validation ──
+
+    [Fact]
+    public void LoadFromJson_ValidFaithfulnessThresholds_ParsesSuccessfully()
+    {
+        const string json = """
+            {
+              "topK": 1,
+              "thresholds": { "meanReciprocalRank": 0.5, "meanNdcgAtK": 0.5 },
+              "faithfulnessThresholds": { "meanFaithfulness": 0.8, "minimumPerQueryFaithfulness": 0.6 },
+              "documents": [ { "id": "doc-a", "content": "alpha" } ],
+              "queries": [
+                {
+                  "id": "q1",
+                  "text": "alpha query",
+                  "relevance": [ { "chunkId": "doc-a_chunk_0", "grade": 1 } ],
+                  "faithfulness": { "expectedContextChunkIds": ["doc-a_chunk_0"] }
+                }
+              ]
+            }
+            """;
+
+        var dataset = RetrievalEvaluationDatasetLoader.LoadFromJson(json);
+
+        Assert.NotNull(dataset.FaithfulnessThresholds);
+        Assert.Equal(0.8, dataset.FaithfulnessThresholds.MeanFaithfulness);
+        Assert.Equal(0.6, dataset.FaithfulnessThresholds.MinimumPerQueryFaithfulness);
+        var faithfulness = Assert.Single(dataset.Queries).Faithfulness;
+        Assert.NotNull(faithfulness);
+        Assert.Equal("doc-a_chunk_0", Assert.Single(faithfulness.ExpectedContextChunkIds));
+    }
+
+    [Theory]
+    [InlineData(-0.1, 0.5)]
+    [InlineData(1.1, 0.5)]
+    [InlineData(0.5, -0.1)]
+    [InlineData(0.5, 1.1)]
+    public void LoadFromJson_InvalidFaithfulnessThresholds_Throws(double mean, double min)
+    {
+        var meanLiteral = mean.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var minLiteral = min.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var json = $$"""
+            {
+              "topK": 1,
+              "thresholds": { "meanReciprocalRank": 0.5, "meanNdcgAtK": 0.5 },
+              "faithfulnessThresholds": { "meanFaithfulness": {{meanLiteral}}, "minimumPerQueryFaithfulness": {{minLiteral}} },
+              "documents": [ { "id": "doc-a", "content": "alpha" } ],
+              "queries": [
+                {
+                  "id": "q1",
+                  "text": "alpha",
+                  "relevance": [ { "chunkId": "doc-a_chunk_0", "grade": 1 } ],
+                  "faithfulness": { "expectedContextChunkIds": ["doc-a_chunk_0"] }
+                }
+              ]
+            }
+            """;
+        Assert.Throws<InvalidDataException>(() => RetrievalEvaluationDatasetLoader.LoadFromJson(json));
+    }
+
+    [Fact]
+    public void LoadFromJson_FaithfulnessThresholdsPresent_QueryMissingFaithfulness_Throws()
+    {
+        const string json = """
+            {
+              "topK": 1,
+              "thresholds": { "meanReciprocalRank": 0.5, "meanNdcgAtK": 0.5 },
+              "faithfulnessThresholds": { "meanFaithfulness": 0.8, "minimumPerQueryFaithfulness": 0.6 },
+              "documents": [ { "id": "doc-a", "content": "alpha" } ],
+              "queries": [
+                { "id": "q1", "text": "alpha", "relevance": [ { "chunkId": "doc-a_chunk_0", "grade": 1 } ] }
+              ]
+            }
+            """;
+        Assert.Throws<InvalidDataException>(() => RetrievalEvaluationDatasetLoader.LoadFromJson(json));
+    }
+
+    [Fact]
+    public void LoadFromJson_FaithfulnessExpectationWithoutThresholds_Throws()
+    {
+        const string json = """
+            {
+              "topK": 1,
+              "thresholds": { "meanReciprocalRank": 0.5, "meanNdcgAtK": 0.5 },
+              "documents": [ { "id": "doc-a", "content": "alpha" } ],
+              "queries": [
+                {
+                  "id": "q1",
+                  "text": "alpha",
+                  "relevance": [ { "chunkId": "doc-a_chunk_0", "grade": 1 } ],
+                  "faithfulness": { "expectedContextChunkIds": ["doc-a_chunk_0"] }
+                }
+              ]
+            }
+            """;
+
+        var exception = Assert.Throws<InvalidDataException>(() => RetrievalEvaluationDatasetLoader.LoadFromJson(json));
+        Assert.Contains("faithfulnessThresholds", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LoadFromJson_FaithfulnessExpectation_EmptyExpectedContextChunkIds_Throws()
+    {
+        const string json = """
+            {
+              "topK": 1,
+              "thresholds": { "meanReciprocalRank": 0.5, "meanNdcgAtK": 0.5 },
+              "faithfulnessThresholds": { "meanFaithfulness": 0.8, "minimumPerQueryFaithfulness": 0.6 },
+              "documents": [ { "id": "doc-a", "content": "alpha" } ],
+              "queries": [
+                {
+                  "id": "q1",
+                  "text": "alpha",
+                  "relevance": [ { "chunkId": "doc-a_chunk_0", "grade": 1 } ],
+                  "faithfulness": { "expectedContextChunkIds": [] }
+                }
+              ]
+            }
+            """;
+        Assert.Throws<InvalidDataException>(() => RetrievalEvaluationDatasetLoader.LoadFromJson(json));
+    }
+
+    [Fact]
+    public void LoadFromJson_FaithfulnessExpectation_DuplicateChunkId_Throws()
+    {
+        const string json = """
+            {
+              "topK": 1,
+              "thresholds": { "meanReciprocalRank": 0.5, "meanNdcgAtK": 0.5 },
+              "faithfulnessThresholds": { "meanFaithfulness": 0.8, "minimumPerQueryFaithfulness": 0.6 },
+              "documents": [ { "id": "doc-a", "content": "alpha" } ],
+              "queries": [
+                {
+                  "id": "q1",
+                  "text": "alpha",
+                  "relevance": [ { "chunkId": "doc-a_chunk_0", "grade": 1 } ],
+                  "faithfulness": { "expectedContextChunkIds": ["doc-a_chunk_0", "doc-a_chunk_0"] }
+                }
+              ]
+            }
+            """;
+        Assert.Throws<InvalidDataException>(() => RetrievalEvaluationDatasetLoader.LoadFromJson(json));
+    }
+
+    [Fact]
+    public void LoadFromJson_FaithfulnessExpectation_UnknownChunkId_Throws()
+    {
+        const string json = """
+            {
+              "topK": 1,
+              "thresholds": { "meanReciprocalRank": 0.5, "meanNdcgAtK": 0.5 },
+              "faithfulnessThresholds": { "meanFaithfulness": 0.8, "minimumPerQueryFaithfulness": 0.6 },
+              "documents": [ { "id": "doc-a", "content": "alpha" } ],
+              "queries": [
+                {
+                  "id": "q1",
+                  "text": "alpha",
+                  "relevance": [ { "chunkId": "doc-a_chunk_0", "grade": 1 } ],
+                  "faithfulness": { "expectedContextChunkIds": ["doc-unknown_chunk_0"] }
+                }
+              ]
+            }
+            """;
+        Assert.Throws<InvalidDataException>(() => RetrievalEvaluationDatasetLoader.LoadFromJson(json));
+    }
+
+    [Fact]
+    public void LoadFromJson_NoFaithfulnessThresholdsAndNoExpectations_ParsesSuccessfully()
+    {
+        // Backwards compatibility: existing retrieval-only fixtures without faithfulness data are unaffected.
+        const string json = """
+            {
+              "topK": 1,
+              "thresholds": { "meanReciprocalRank": 0.5, "meanNdcgAtK": 0.5 },
+              "documents": [ { "id": "doc-a", "content": "alpha" } ],
+              "queries": [
+                { "id": "q1", "text": "alpha", "relevance": [ { "chunkId": "doc-a_chunk_0", "grade": 1 } ] }
+              ]
+            }
+            """;
+
+        var dataset = RetrievalEvaluationDatasetLoader.LoadFromJson(json);
+
+        Assert.Null(dataset.FaithfulnessThresholds);
+        Assert.Null(Assert.Single(dataset.Queries).Faithfulness);
+    }
 }

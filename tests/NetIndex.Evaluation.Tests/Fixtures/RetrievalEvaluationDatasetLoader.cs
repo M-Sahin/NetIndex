@@ -179,5 +179,73 @@ internal static class RetrievalEvaluationDatasetLoader
                 throw new InvalidDataException($"Query '{query.Id}' has no positively judged (grade >= 1) chunk.");
             }
         }
+
+        var hasFaithfulnessExpectations = dataset.Queries.Any(static q => q.Faithfulness is not null);
+        if (dataset.FaithfulnessThresholds is not { } ft)
+        {
+            if (hasFaithfulnessExpectations)
+            {
+                throw new InvalidDataException(
+                    "faithfulnessThresholds is required when any query contains a faithfulness expectation.");
+            }
+
+            return;
+        }
+
+        ValidateFaithfulness(ft, dataset.Queries, validChunkIds);
+    }
+
+    private static void ValidateFaithfulness(
+        FaithfulnessThresholds thresholds,
+        IReadOnlyList<RetrievalEvaluationQuery> queries,
+        HashSet<string> validChunkIds)
+    {
+        if (!double.IsFinite(thresholds.MeanFaithfulness)
+            || thresholds.MeanFaithfulness < 0 || thresholds.MeanFaithfulness > 1
+            || !double.IsFinite(thresholds.MinimumPerQueryFaithfulness)
+            || thresholds.MinimumPerQueryFaithfulness < 0 || thresholds.MinimumPerQueryFaithfulness > 1)
+        {
+            throw new InvalidDataException(
+                "Faithfulness thresholds must be explicit values in [0, 1].");
+        }
+
+        foreach (var query in queries)
+        {
+            if (query.Faithfulness is null)
+            {
+                throw new InvalidDataException(
+                    $"Query '{query.Id}' is missing a faithfulness expectation; all queries require one when faithfulnessThresholds is present.");
+            }
+
+            var expectation = query.Faithfulness;
+
+            if (expectation.ExpectedContextChunkIds is null || expectation.ExpectedContextChunkIds.Count == 0)
+            {
+                throw new InvalidDataException(
+                    $"Query '{query.Id}' faithfulness expectation has an empty expectedContextChunkIds collection.");
+            }
+
+            var seenIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var chunkId in expectation.ExpectedContextChunkIds)
+            {
+                if (string.IsNullOrWhiteSpace(chunkId))
+                {
+                    throw new InvalidDataException(
+                        $"Query '{query.Id}' faithfulness expectation contains a null or empty chunk Id.");
+                }
+
+                if (!seenIds.Add(chunkId))
+                {
+                    throw new InvalidDataException(
+                        $"Query '{query.Id}' faithfulness expectation has duplicate chunk Id '{chunkId}'.");
+                }
+
+                if (!validChunkIds.Contains(chunkId))
+                {
+                    throw new InvalidDataException(
+                        $"Query '{query.Id}' faithfulness expectation references unknown chunk '{chunkId}'; no document produces that chunk Id.");
+                }
+            }
+        }
     }
 }
