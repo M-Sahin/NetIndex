@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NetIndex.Core.Abstractions;
@@ -74,6 +75,45 @@ public class BuilderExtensionsTests
 
         var registrations = services.Where(s => s.ServiceType == typeof(IEmbeddingGenerator)).ToList();
         registrations.Should().HaveCount(1);
+    }
+
+    /// <summary>
+    /// Verifies that the <see cref="IConfigurationSection"/> overload binds options and registers the generator.
+    /// Guards the template's documented swap line <c>UseOllama(builder.Configuration.GetSection("NetIndex:Ollama"))</c>.
+    /// </summary>
+    [Fact]
+    public void UseOllama_WithConfigurationSection_BindsOptionsAndRegistersGenerator()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["NetIndex:Ollama:Dimensions"] = "768",
+            })
+            .Build();
+        var services = new ServiceCollection();
+        var builder = Substitute.For<INetIndexBuilder>();
+        builder.Services.Returns(services);
+
+        builder.UseOllama(config.GetSection("NetIndex:Ollama"));
+
+        var provider = services.BuildServiceProvider();
+        provider.GetService<IEmbeddingGenerator>().Should().BeOfType<OllamaEmbeddingGenerator>();
+        provider.GetRequiredService<IOptions<OllamaOptions>>().Value.Dimensions.Should().Be(768);
+    }
+
+    /// <summary>
+    /// Verifies that the <see cref="IConfigurationSection"/> overload rejects a null section.
+    /// </summary>
+    [Fact]
+    public void UseOllama_WithNullConfigurationSection_ThrowsArgumentNullException()
+    {
+        var services = new ServiceCollection();
+        var builder = Substitute.For<INetIndexBuilder>();
+        builder.Services.Returns(services);
+
+        var act = () => builder.UseOllama((IConfigurationSection)null!);
+
+        act.Should().Throw<ArgumentNullException>();
     }
 
     /// <summary>

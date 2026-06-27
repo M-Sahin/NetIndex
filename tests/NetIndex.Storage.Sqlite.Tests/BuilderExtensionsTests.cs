@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NetIndex.Core.Abstractions;
@@ -100,6 +101,40 @@ public class BuilderExtensionsTests
         var result = builder.UseSqlite("Data Source=:memory:");
 
         result.Should().BeSameAs(builder);
+    }
+
+    /// <summary>
+    /// UseSqlite(IConfigurationSection) binds options and registers IVectorStore.
+    /// Guards the template's documented swap line <c>UseSqlite(builder.Configuration.GetSection("NetIndex:Sqlite"))</c>.
+    /// </summary>
+    [Fact]
+    public void UseSqlite_WithConfigurationSection_BindsOptionsAndRegistersIVectorStore()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["NetIndex:Sqlite:ConnectionString"] = "Data Source=./from-config.db",
+                ["NetIndex:Sqlite:Dimensions"] = "8",
+            })
+            .Build();
+        var builder = CreateBuilder();
+
+        builder.UseSqlite(config.GetSection("NetIndex:Sqlite"));
+
+        var provider = builder.Services.BuildServiceProvider();
+        provider.GetRequiredService<IVectorStore>().Should().BeOfType<SqliteVectorStore>();
+        var resolved = provider.GetRequiredService<IOptions<SqliteOptions>>().Value;
+        resolved.ConnectionString.Should().Be("Data Source=./from-config.db");
+        resolved.Dimensions.Should().Be(8);
+    }
+
+    /// <summary>UseSqlite(IConfigurationSection) with a null section throws ArgumentNullException.</summary>
+    [Fact]
+    public void UseSqlite_WithNullConfigurationSection_ThrowsArgumentNullException()
+    {
+        var builder = CreateBuilder();
+        var act = () => builder.UseSqlite((IConfigurationSection)null!);
+        act.Should().Throw<ArgumentNullException>().WithParameterName("section");
     }
 
     /// <summary>The explicit connectionString argument wins over an attempt to override it via the configure delegate.</summary>
