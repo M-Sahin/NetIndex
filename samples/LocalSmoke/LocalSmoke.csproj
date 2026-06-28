@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Runnable sample: not part of the shipped solution, never packed,
+         and exempt from the library XML-doc requirement. -->
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <RootNamespace>NetIndex.Samples.LocalSmoke</RootNamespace>
+    <AssemblyName>LocalSmoke</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference the source directly — no NuGet packages, no publishing required. -->
+    <ProjectReference Include="..\..\src\Core\NetIndex.Core\NetIndex.Core.csproj" />
+    <ProjectReference Include="..\..\src\Providers\NetIndex.Providers.Ollama\NetIndex.Providers.Ollama.csproj" />
+    <ProjectReference Include="..\..\src\Storage\NetIndex.Storage.Sqlite\NetIndex.Storage.Sqlite.csproj" />
+  </ItemGroup>
+
+</Project>
