@@ -50,11 +50,12 @@ public sealed class NetIndexBuilder : INetIndexBuilder
         {
             // Temporary provider for validation only — disposed after validation passes.
             // The host's IServiceProvider resolves NetIndexPipeline at runtime.
-            using (var validationProvider = _services.BuildServiceProvider(new ServiceProviderOptions
+            var validationProvider = _services.BuildServiceProvider(new ServiceProviderOptions
             {
                 ValidateOnBuild = true,
                 ValidateScopes = true,
-            }))
+            });
+            try
             {
                 _ = validationProvider.GetRequiredService<IOptions<NetIndexOptions>>().Value;
                 foreach (var validator in validationProvider.GetServices<INetIndexBuildValidator>())
@@ -92,6 +93,17 @@ public sealed class NetIndexBuilder : INetIndexBuilder
                         vectorStore.Dimensions,
                         embeddingGenerator.Dimensions);
                 }
+            }
+            finally
+            {
+                // The validation provider may have resolved IAsyncDisposable-only
+                // singletons (e.g. SqliteVectorStore); a synchronous Dispose() would
+                // throw "only implements IAsyncDisposable". Dispose asynchronously.
+                // Build() is a synchronous startup API with no synchronization context
+                // (console / modern ASP.NET Core), so blocking here cannot deadlock.
+#pragma warning disable VSTHRD002 // Synchronous Build() must await the async-disposable validation provider.
+                validationProvider.DisposeAsync().AsTask().GetAwaiter().GetResult();
+#pragma warning restore VSTHRD002
             }
         }
         catch (NetIndexConfigurationException)
