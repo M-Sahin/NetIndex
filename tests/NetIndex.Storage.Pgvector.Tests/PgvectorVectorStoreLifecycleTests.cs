@@ -35,6 +35,7 @@ public class PgvectorVectorStoreLifecycleTests
     [InlineData("UpsertAsync")]
     [InlineData("QueryAsync")]
     [InlineData("DeleteAsync")]
+    [InlineData("ReplaceDocumentAsync")]
     public async Task PublicMethods_AfterDispose_ThrowObjectDisposedExceptionAsync(string methodName)
     {
         var store = CreateStore();
@@ -51,6 +52,7 @@ public class PgvectorVectorStoreLifecycleTests
                 }
             },
             "DeleteAsync" => () => store.DeleteAsync("doc-1"),
+            "ReplaceDocumentAsync" => () => store.ReplaceDocumentAsync("doc-1", Array.Empty<RagChunk>()),
             _ => throw new ArgumentException($"Unknown method: {methodName}"),
         };
 

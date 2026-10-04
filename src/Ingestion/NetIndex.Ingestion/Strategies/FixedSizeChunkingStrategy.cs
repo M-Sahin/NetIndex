@@ -89,7 +89,8 @@ public sealed class FixedSizeChunkingStrategy : IChunkingStrategy
                 null));
         }
 
-        return Task.FromResult<IEnumerable<RagChunk>>(chunks);
+        return Task.FromResult<IEnumerable<RagChunk>>(
+            ChunkSizeEnforcer.Enforce(chunks, maxChars, overlapChars, cancellationToken));
     }
 
     private RagChunk CreateChunk(int index, StringBuilder currentChunk, int overlapChars)

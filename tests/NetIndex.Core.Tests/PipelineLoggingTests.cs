@@ -191,7 +191,7 @@ public sealed class PipelineLoggingTests
 
         mocks.MockEmbedding.GenerateBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
             .Returns(System.Threading.Tasks.Task.FromResult(new float[][] { new float[384] }));
-        mocks.MockStore.UpsertAsync(Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
+        mocks.MockStore.ReplaceDocumentAsync(Arg.Any<string>(), Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
             .Returns(System.Threading.Tasks.Task.CompletedTask);
 
         await pipeline.IngestAsync(CreateDocument("doc-1", "hello"));
@@ -217,7 +217,7 @@ public sealed class PipelineLoggingTests
 
         mocks.MockEmbedding.GenerateBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
             .Returns(System.Threading.Tasks.Task.FromResult(new float[][] { new float[384] }));
-        mocks.MockStore.UpsertAsync(Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
+        mocks.MockStore.ReplaceDocumentAsync(Arg.Any<string>(), Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
             .Returns(System.Threading.Tasks.Task.CompletedTask);
 
         await pipeline.IngestAsync(CreateDocument("doc-1", "secret-content-xyz"));
@@ -264,7 +264,7 @@ public sealed class PipelineLoggingTests
         var (mocks, logger, pipeline) = BuildPipeline();
         mocks.MockEmbedding.GenerateBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
             .Returns(System.Threading.Tasks.Task.FromResult(new float[][] { new float[384] }));
-        mocks.MockStore.UpsertAsync(Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
+        mocks.MockStore.ReplaceDocumentAsync(Arg.Any<string>(), Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
             .Returns<System.Threading.Tasks.Task>(_ => throw new OperationCanceledException("canceled"));
 
         await Assert.ThrowsAsync<OperationCanceledException>(
@@ -281,7 +281,7 @@ public sealed class PipelineLoggingTests
         var (mocks, logger, pipeline) = BuildPipeline();
         mocks.MockEmbedding.GenerateBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
             .Returns(System.Threading.Tasks.Task.FromResult(new float[][] { new float[384] }));
-        mocks.MockStore.UpsertAsync(Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
+        mocks.MockStore.ReplaceDocumentAsync(Arg.Any<string>(), Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
             .Returns<System.Threading.Tasks.Task>(_ => throw new InvalidOperationException("raw upsert failure"));
 
         await Assert.ThrowsAsync<NetIndexProviderException>(
@@ -540,7 +540,7 @@ public sealed class PipelineLoggingTests
         embedding.GenerateBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
             .Returns(System.Threading.Tasks.Task.FromResult(new float[][] { new float[384] }));
         store.Dimensions.Returns(384);
-        store.UpsertAsync(Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
+        store.ReplaceDocumentAsync(Arg.Any<string>(), Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
             .Returns(System.Threading.Tasks.Task.CompletedTask);
 
         services.AddSingleton(resolver);

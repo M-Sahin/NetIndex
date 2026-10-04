@@ -82,6 +82,22 @@ public abstract class VectorStoreContractSuite : IAsyncLifetime
         return results;
     }
 
+    private static RagChunk CreateTenantChunk(string chunkId, string documentId, float[] embedding, string? tenant)
+        => new(
+            chunkId,
+            $"text-{chunkId}",
+            embedding,
+            documentId,
+            tenant is null ? null : new Dictionary<string, string> { [RagChunkMetadata.TenantId] = tenant });
+
+    private async Task<string[]> QueryIdsAsync()
+    {
+        var results = await ReadAllAsync(
+            Store.QueryAsync(CreateVector(Store.Dimensions, 1f, 0f, 0f), top: 50, CancellationToken.None),
+            CancellationToken.None);
+        return results.Select(r => r.Item.Id).OrderBy(id => id, StringComparer.Ordinal).ToArray();
+    }
+
     private async Task AssertDimensionMismatchAsync(Func<Task> action)
     {
         var exception = await Record.ExceptionAsync(action).ConfigureAwait(false);
@@ -196,5 +212,172 @@ public abstract class VectorStoreContractSuite : IAsyncLifetime
 
         // Assert
         Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task Replace_ShorterSet_LeavesOnlyTheNewChunksAsync()
+    {
+        // Arrange: 5 chunks, then re-ingest as 2
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        await Store.ReplaceDocumentAsync(
+            "doc-replace",
+            Enumerable.Range(0, 5).Select(i => CreateTenantChunk($"doc-replace_chunk_{i}", "doc-replace", vector, "tenant-a")),
+            CancellationToken.None);
+        Assert.Equal(5, (await QueryIdsAsync()).Length);
+
+        // Act
+        await Store.ReplaceDocumentAsync(
+            "doc-replace",
+            Enumerable.Range(0, 2).Select(i => CreateTenantChunk($"doc-replace_chunk_{i}", "doc-replace", vector, "tenant-a")),
+            CancellationToken.None);
+
+        // Assert
+        Assert.Equal(new[] { "doc-replace_chunk_0", "doc-replace_chunk_1" }, await QueryIdsAsync());
+    }
+
+    [Fact]
+    public async Task Replace_SameAndLongerSet_LeavesExactlyTheNewSetAsync()
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        var other = CreateTenantChunk("other_chunk_0", "other", vector, "tenant-a");
+        await Store.UpsertAsync(new[] { other }, CancellationToken.None);
+
+        // 2 -> 2 with changed text
+        await Store.ReplaceDocumentAsync(
+            "doc-same",
+            Enumerable.Range(0, 2).Select(i => CreateTenantChunk($"doc-same_chunk_{i}", "doc-same", vector, "tenant-a")),
+            CancellationToken.None);
+        var rewritten = Enumerable.Range(0, 2)
+            .Select(i => new RagChunk($"doc-same_chunk_{i}", $"v2-{i}", vector, "doc-same", new Dictionary<string, string> { [RagChunkMetadata.TenantId] = "tenant-a" }))
+            .ToArray();
+        await Store.ReplaceDocumentAsync("doc-same", rewritten, CancellationToken.None);
+
+        var results = await ReadAllAsync(Store.QueryAsync(vector, top: 50, CancellationToken.None), CancellationToken.None);
+        Assert.Equal(
+            new[] { "v2-0", "v2-1" },
+            results.Where(r => r.Item.DocumentId == "doc-same").Select(r => r.Item.Text).OrderBy(t => t, StringComparer.Ordinal).ToArray());
+
+        // 2 -> 5
+        await Store.ReplaceDocumentAsync(
+            "doc-same",
+            Enumerable.Range(0, 5).Select(i => CreateTenantChunk($"doc-same_chunk_{i}", "doc-same", vector, "tenant-a")),
+            CancellationToken.None);
+
+        var ids = await QueryIdsAsync();
+        Assert.Equal(6, ids.Length);
+        Assert.Contains("other_chunk_0", ids);
+        Assert.Equal(5, ids.Count(id => id.StartsWith("doc-same_", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task Replace_CrossTenantCollision_IsRejectedAndLeavesTheOriginalIntactAsync()
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        await Store.ReplaceDocumentAsync(
+            "doc-1",
+            Enumerable.Range(0, 3).Select(i => CreateTenantChunk($"doc-1_chunk_{i}", "doc-1", vector, "tenant-a")),
+            CancellationToken.None);
+
+        // Tenant B tries to take over doc-1 with a different-size set.
+        var exception = await Record.ExceptionAsync(() => Store.ReplaceDocumentAsync(
+            "doc-1",
+            new[] { CreateTenantChunk("doc-1_chunk_0", "doc-1", vector, "tenant-b") },
+            CancellationToken.None));
+
+        var auth = Assert.IsType<NetIndexAuthorizationException>(exception);
+        Assert.Equal("CrossTenantDocumentCollision", auth.FailureReason);
+
+        var results = await ReadAllAsync(Store.QueryAsync(vector, top: 50, CancellationToken.None), CancellationToken.None);
+        Assert.Equal(3, results.Count);
+        Assert.All(results, r => Assert.Equal("tenant-a", r.Item.Metadata![RagChunkMetadata.TenantId]));
+    }
+
+    [Fact]
+    public async Task Replace_ExistingChunksWithoutTenant_AreRejectedForATenantedReplaceAsync()
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        await Store.UpsertAsync(new[] { CreateTenantChunk("doc-2_chunk_0", "doc-2", vector, null) }, CancellationToken.None);
+
+        var exception = await Record.ExceptionAsync(() => Store.ReplaceDocumentAsync(
+            "doc-2",
+            new[] { CreateTenantChunk("doc-2_chunk_0", "doc-2", vector, "tenant-b") },
+            CancellationToken.None));
+
+        Assert.IsType<NetIndexAuthorizationException>(exception);
+        Assert.Equal(new[] { "doc-2_chunk_0" }, await QueryIdsAsync());
+    }
+
+    [Fact]
+    public async Task Replace_WithInvalidNewChunk_FailsAndLeavesTheOldSetIntactAsync()
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        await Store.ReplaceDocumentAsync(
+            "doc-3",
+            Enumerable.Range(0, 3).Select(i => CreateTenantChunk($"doc-3_chunk_{i}", "doc-3", vector, "tenant-a")),
+            CancellationToken.None);
+
+        var broken = new[]
+        {
+            CreateTenantChunk("doc-3_chunk_0", "doc-3", vector, "tenant-a"),
+            CreateTenantChunk("doc-3_chunk_1", "doc-3", new float[Store.Dimensions + 1], "tenant-a"),
+        };
+        var exception = await Record.ExceptionAsync(() => Store.ReplaceDocumentAsync("doc-3", broken, CancellationToken.None));
+
+        Assert.NotNull(exception);
+        Assert.Equal(3, (await QueryIdsAsync()).Length);
+    }
+
+    [Fact]
+    public async Task Replace_ChunkOfAnotherDocument_IsRejectedAsync()
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        var exception = await Record.ExceptionAsync(() => Store.ReplaceDocumentAsync(
+            "doc-4",
+            new[] { CreateTenantChunk("x_chunk_0", "not-doc-4", vector, "tenant-a") },
+            CancellationToken.None));
+
+        Assert.IsAssignableFrom<ArgumentException>(exception);
+        Assert.Empty(await QueryIdsAsync());
+    }
+
+    [Fact]
+    public async Task Replace_UnderConcurrentQueries_NeverShowsAMixedOrEmptySetAsync()
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        RagChunk[] Set(int n) => Enumerable.Range(0, n)
+            .Select(i => new RagChunk(
+                $"doc-c_chunk_{i}",
+                $"t{n}-{i}",
+                vector,
+                "doc-c",
+                new Dictionary<string, string> { [RagChunkMetadata.TenantId] = "tenant-a" }))
+            .ToArray();
+        await Store.ReplaceDocumentAsync("doc-c", Set(5), CancellationToken.None);
+
+        using var cts = new CancellationTokenSource();
+        var violations = 0;
+        var reader = Task.Run(async () =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                var results = await ReadAllAsync(Store.QueryAsync(vector, top: 20, CancellationToken.None), CancellationToken.None);
+                var texts = results.Select(r => r.Item.Text).ToList();
+                var consistent = (texts.Count == 5 && texts.All(t => t.StartsWith("t5-", StringComparison.Ordinal)))
+                    || (texts.Count == 2 && texts.All(t => t.StartsWith("t2-", StringComparison.Ordinal)));
+                if (!consistent)
+                {
+                    Interlocked.Increment(ref violations);
+                }
+            }
+        });
+
+        for (var round = 0; round < 40; round++)
+        {
+            await Store.ReplaceDocumentAsync("doc-c", Set(round % 2 == 0 ? 2 : 5), CancellationToken.None);
+        }
+
+        await cts.CancelAsync();
+        await reader;
+        Assert.Equal(0, violations);
     }
 }

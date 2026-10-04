@@ -88,13 +88,9 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
             currentFixedIndex++;
         }
 
-        // Re-index chunk IDs to be sequential
-        return result.Select((chunk, index) => new RagChunk(
-            $"chunk_{index}",
-            chunk.Text,
-            null,
-            "pending",
-            null));
+        // Final size enforcement, then sequential chunk IDs
+        return ChunkSizeEnforcer.Enforce(
+            result, maxChars, TokensToChars(options.ChunkOverlap), cancellationToken);
     }
 
     private static int TokensToChars(int tokens) => tokens * CharsPerToken;

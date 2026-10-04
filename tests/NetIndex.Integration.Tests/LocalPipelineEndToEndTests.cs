@@ -78,8 +78,9 @@ public sealed class LocalPipelineEndToEndTests
     [Fact]
     public async Task FullPipeline_IngestAndQuery_WithChunking_SplitsContentAsync()
     {
-        // Arrange — FixedSizeChunkingStrategy with the pipeline's default 1000-token (4000-char) limit.
-        // Three paragraphs: the first two fit within 4000 chars; adding the third exceeds it → 2 chunks.
+        // Arrange — FixedSizeChunkingStrategy with the configured 512-token (2048-char) limit, which the
+        // pipeline honours (it used to force 1000/200 regardless of configuration). The three ~1.5k-char
+        // paragraphs total ~4.6k chars, so they cannot fit one chunk → several chunks.
         var services = new ServiceCollection();
         services.AddSingleton(CreateAllowAllResolver());
         services.AddSingleton<IEmbeddingGenerator>(new FakeEmbeddingGenerator(384));

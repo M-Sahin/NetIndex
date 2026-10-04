@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using NpgsqlTypes;
 using Pgvector;
 using Pgvector.Npgsql;
 using NetIndex.Core.Abstractions;
@@ -57,31 +58,7 @@ public sealed class PgvectorVectorStore : IVectorStore, IAsyncDisposable
 
         // Validate all chunks before opening any connection or transaction
         var chunkList = chunks.ToList();
-        foreach (var chunk in chunkList)
-        {
-            ArgumentNullException.ThrowIfNull(chunk);
-            ArgumentException.ThrowIfNullOrWhiteSpace(chunk.Id, nameof(chunk.Id));
-            ArgumentException.ThrowIfNullOrWhiteSpace(chunk.DocumentId, nameof(chunk.DocumentId));
-            ArgumentNullException.ThrowIfNull(chunk.Text, nameof(chunk.Text));
-            if (chunk.Embedding is null)
-            {
-                throw new NetIndexStorageException(
-                    "Chunk embedding is required for upsert.",
-                    "PgvectorVectorStore",
-                    "Upsert",
-                    chunk.DocumentId);
-            }
-
-            if (chunk.Embedding.Length != _dimensions)
-            {
-                throw new NetIndexConfigurationException(
-                    $"Embedding dimension mismatch: expected {_dimensions}, got {chunk.Embedding.Length}. " +
-                    $"Ensure PgvectorOptions.Dimensions matches IEmbeddingGenerator.Dimensions.",
-                    propertyName: "Dimensions",
-                    expectedValue: _dimensions,
-                    actualValue: chunk.Embedding.Length);
-            }
-        }
+        ValidateChunks(chunkList);
 
         if (chunkList.Count == 0)
         {
@@ -215,6 +192,127 @@ public sealed class PgvectorVectorStore : IVectorStore, IAsyncDisposable
         finally
         {
             _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task ReplaceDocumentAsync(
+        string documentId,
+        IEnumerable<RagChunk> chunks,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunks);
+        ThrowIfDisposed();
+
+        var chunkList = chunks.ToList();
+        var newTenant = IVectorStore.ValidateReplacement(documentId, chunkList);
+        ValidateChunks(chunkList);
+
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+            // Serialize replaces of the same document across processes (covers the no-existing-rows case).
+            await using (var lockCmd = connection.CreateCommand())
+            {
+                lockCmd.Transaction = transaction;
+                lockCmd.CommandText = "SELECT pg_advisory_xact_lock(hashtextextended(@documentId, 0))";
+                lockCmd.Parameters.AddWithValue("documentId", documentId);
+                await lockCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            // Fail closed: any existing chunk of this document with a different (or missing) tenant tag rejects the replace.
+            long foreign;
+            await using (var checkCmd = connection.CreateCommand())
+            {
+                checkCmd.Transaction = transaction;
+                checkCmd.CommandText = """
+                    SELECT COUNT(*) FROM rag_chunks
+                    WHERE document_id = @documentId
+                      AND (metadata_json::jsonb ->> 'netindex:tenant_id') IS DISTINCT FROM @tenant
+                    """;
+                checkCmd.Parameters.AddWithValue("documentId", documentId);
+                checkCmd.Parameters.Add(new NpgsqlParameter("tenant", NpgsqlDbType.Text)
+                {
+                    Value = (object?)newTenant ?? DBNull.Value,
+                });
+                foreign = Convert.ToInt64(await checkCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
+            }
+
+            if (foreign > 0)
+            {
+                throw IVectorStore.CrossTenantCollision(documentId, newTenant);
+            }
+
+            await using (var deleteCmd = connection.CreateCommand())
+            {
+                deleteCmd.Transaction = transaction;
+                deleteCmd.CommandText = "DELETE FROM rag_chunks WHERE document_id = @documentId";
+                deleteCmd.Parameters.AddWithValue("documentId", documentId);
+                await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            foreach (var chunk in chunkList)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await UpsertChunkAsync(chunk, connection, transaction, cancellationToken).ConfigureAwait(false);
+            }
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (NetIndexException)
+        {
+            throw;
+        }
+        catch (ObjectDisposedException) when (_disposeState != 0)
+        {
+            throw new ObjectDisposedException(nameof(PgvectorVectorStore));
+        }
+        catch (Exception ex)
+        {
+            throw WrapStorageException(ex, "Replace", documentId);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    private void ValidateChunks(IReadOnlyList<RagChunk> chunkList)
+    {
+        foreach (var chunk in chunkList)
+        {
+            ArgumentNullException.ThrowIfNull(chunk);
+            ArgumentException.ThrowIfNullOrWhiteSpace(chunk.Id, nameof(chunk.Id));
+            ArgumentException.ThrowIfNullOrWhiteSpace(chunk.DocumentId, nameof(chunk.DocumentId));
+            ArgumentNullException.ThrowIfNull(chunk.Text, nameof(chunk.Text));
+            if (chunk.Embedding is null)
+            {
+                throw new NetIndexStorageException(
+                    "Chunk embedding is required for upsert.",
+                    "PgvectorVectorStore",
+                    "Upsert",
+                    chunk.DocumentId);
+            }
+
+            if (chunk.Embedding.Length != _dimensions)
+            {
+                throw new NetIndexConfigurationException(
+                    $"Embedding dimension mismatch: expected {_dimensions}, got {chunk.Embedding.Length}. " +
+                    $"Ensure PgvectorOptions.Dimensions matches IEmbeddingGenerator.Dimensions.",
+                    propertyName: "Dimensions",
+                    expectedValue: _dimensions,
+                    actualValue: chunk.Embedding.Length);
+            }
         }
     }
 

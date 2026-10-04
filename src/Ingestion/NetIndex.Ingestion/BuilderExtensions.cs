@@ -13,6 +13,15 @@ namespace NetIndex.Ingestion;
 public static class NetIndexBuilderExtensions
 {
     /// <summary>
+    /// Registers the default chunking strategy (fixed-size, 512 tokens, 64 overlap, "\n" separator).
+    /// </summary>
+    /// <param name="builder">The <see cref="INetIndexBuilder"/> to configure.</param>
+    /// <returns>The same <see cref="INetIndexBuilder"/> for fluent chaining.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="builder"/> is null.</exception>
+    public static INetIndexBuilder UseChunking(this INetIndexBuilder builder) =>
+        builder.UseChunking(_ => { });
+
+    /// <summary>
     /// Registers a chunking strategy and its configuration on the pipeline builder.
     /// </summary>
     /// <param name="builder">The <see cref="INetIndexBuilder"/> to configure.</param>
@@ -27,6 +36,11 @@ public static class NetIndexBuilderExtensions
         ArgumentNullException.ThrowIfNull(configure);
 
         builder.Services.Configure(configure);
+
+        // Flow the configured size/overlap/separator to the pipeline through Core.Abstractions
+        // (Core must not reference Ingestion). The pipeline resolves ChunkingOptions optionally.
+        builder.Services.TryAddSingleton<ChunkingOptions>(sp =>
+            sp.GetRequiredService<IOptions<ChunkingConfiguration>>().Value.ToChunkingOptions());
 
         // Register concrete strategies so the factory can resolve them
         builder.Services.TryAddSingleton<FixedSizeChunkingStrategy>();

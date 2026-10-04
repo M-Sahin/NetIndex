@@ -70,7 +70,7 @@ public sealed class PipelineTracingTests : IDisposable
                 [new RagChunk("c0", "text", null, "doc-1", null)]));
         mocks.MockEmbedding.GenerateBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new float[][] { new float[384] }));
-        mocks.MockStore.UpsertAsync(Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
+        mocks.MockStore.ReplaceDocumentAsync(Arg.Any<string>(), Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
         await pipeline.IngestAsync(CreateDocument("doc-1", "hello"));
@@ -116,7 +116,7 @@ public sealed class PipelineTracingTests : IDisposable
                 [new RagChunk("c0", "text", null, "doc-1", null)]));
         mocks.MockEmbedding.GenerateBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new float[][] { new float[384] }));
-        mocks.MockStore.UpsertAsync(Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
+        mocks.MockStore.ReplaceDocumentAsync(Arg.Any<string>(), Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
         await pipeline.IngestAsync(CreateDocument("doc-1", "hello"));
@@ -437,7 +437,7 @@ public sealed class PipelineTracingTests : IDisposable
                 [new RagChunk("c0", "text", null, "doc-1", null)]));
         mocks.MockEmbedding.GenerateBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new float[][] { new float[384] }));
-        mocks.MockStore.UpsertAsync(Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
+        mocks.MockStore.ReplaceDocumentAsync(Arg.Any<string>(), Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
         await pipeline.IngestAsync(CreateDocument("doc-1", "hello"));
@@ -467,7 +467,7 @@ public sealed class PipelineTracingTests : IDisposable
                 [new RagChunk("c0", "text", null, "doc-1", null)]));
         mocks.MockEmbedding.GenerateBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new float[][] { new float[384] }));
-        mocks.MockStore.UpsertAsync(Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
+        mocks.MockStore.ReplaceDocumentAsync(Arg.Any<string>(), Arg.Any<IEnumerable<RagChunk>>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
         // Must complete without NullReferenceException even though StartActivity returns null
