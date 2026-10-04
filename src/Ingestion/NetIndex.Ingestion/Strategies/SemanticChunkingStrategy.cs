@@ -48,13 +48,10 @@ public sealed class SemanticChunkingStrategy : IChunkingStrategy
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(options);
 
-        if (options.ChunkSize <= 0)
-        {
-            throw new ArgumentException("ChunkSize must be greater than zero.", nameof(options));
-        }
+        ChunkSizeEnforcer.ValidateOptions(options);
 
         var maxChars = TokensToChars(options.ChunkSize);
-        var overlapChars = TokensToChars(Math.Max(0, options.ChunkOverlap));
+        var overlapChars = TokensToChars(options.ChunkOverlap);
 
         // Split into sentences
         var sentences = SentenceSplitter.Split(text)

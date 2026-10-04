@@ -15,6 +15,24 @@ namespace NetIndex.Ingestion.Strategies;
 /// </remarks>
 internal static class ChunkSizeEnforcer
 {
+    /// <summary>Largest ChunkSize (tokens) whose character count (x4) still fits an int.</summary>
+    public const int MaxChunkSizeTokens = int.MaxValue / 4;
+
+    /// <summary>Validates chunk size and overlap so no strategy silently resets or overflows them.</summary>
+    public static void ValidateOptions(ChunkingOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.ChunkSize <= 0 || options.ChunkSize > MaxChunkSizeTokens)
+        {
+            throw new ArgumentException($"ChunkSize must be between 1 and {MaxChunkSizeTokens}.", nameof(options));
+        }
+
+        if (options.ChunkOverlap < 0 || options.ChunkOverlap >= options.ChunkSize)
+        {
+            throw new ArgumentException("ChunkOverlap must be >= 0 and < ChunkSize.", nameof(options));
+        }
+    }
+
     private static readonly Regex SentenceBoundary = new(@"(?<=[.!?]\s)", RegexOptions.Compiled);
     private static readonly Regex WhitespaceBoundary = new(@"(?<=\s)", RegexOptions.Compiled);
 
@@ -32,7 +50,7 @@ internal static class ChunkSizeEnforcer
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxChars, 0);
         if (overlapChars < 0 || overlapChars >= maxChars)
         {
-            overlapChars = 0;
+            throw new ArgumentOutOfRangeException(nameof(overlapChars), "Overlap must be >= 0 and smaller than the chunk size.");
         }
 
         var result = new List<RagChunk>();
@@ -54,7 +72,8 @@ internal static class ChunkSizeEnforcer
 
         for (var i = 0; i < result.Count; i++)
         {
-            result[i] = result[i] with { Id = $"chunk_{i}" };
+            // Normalized output: fresh id, no embedding, "pending" document id, no metadata.
+            result[i] = new RagChunk($"chunk_{i}", result[i].Text, null, "pending", null);
         }
 
         return result;
@@ -168,6 +187,19 @@ internal static class ChunkSizeEnforcer
         if (start > 0 && start < text.Length && char.IsLowSurrogate(text[start]))
         {
             start++;
+        }
+
+        // Prefer starting the overlap at a word boundary so whitespace-separated text is never cut mid-word.
+        if (start > 0 && start < text.Length && !char.IsWhiteSpace(text[start - 1]) && !char.IsWhiteSpace(text[start]))
+        {
+            for (var i = start; i < text.Length; i++)
+            {
+                if (char.IsWhiteSpace(text[i]))
+                {
+                    start = i + 1;
+                    break;
+                }
+            }
         }
 
         return text[start..];

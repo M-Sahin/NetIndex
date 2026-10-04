@@ -299,10 +299,13 @@ public sealed class SqliteVectorStore : IVectorStore, IAsyncDisposable
                 checkCmd.Transaction = transaction;
                 checkCmd.CommandText = """
                     SELECT COUNT(*) FROM rag_chunks
-                    WHERE document_id = @documentId
-                      AND json_extract(metadata_json, '$."netindex:tenant_id"') IS NOT @tenant
+                    WHERE (document_id = @documentId OR chunk_id IN (SELECT value FROM json_each(@chunkIds)))
+                      AND (document_id <> @documentId
+                           OR json_extract(metadata_json, @tenantPath) IS NOT @tenant)
                     """;
                 checkCmd.Parameters.AddWithValue("@documentId", documentId);
+                checkCmd.Parameters.AddWithValue("@tenantPath", "$.\"" + RagChunkMetadata.TenantId + "\"");
+                checkCmd.Parameters.AddWithValue("@chunkIds", JsonSerializer.Serialize(chunkList.Select(c => c.Id)));
                 checkCmd.Parameters.AddWithValue("@tenant", (object?)newTenant ?? DBNull.Value);
                 foreign = Convert.ToInt64(await checkCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
             }

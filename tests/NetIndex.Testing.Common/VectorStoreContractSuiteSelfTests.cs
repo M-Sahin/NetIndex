@@ -101,6 +101,22 @@ public sealed class VectorStoreContractSuiteSelfTests : VectorStoreContractSuite
                 }
             }
 
+            foreach (var chunk in list)
+            {
+                var owner = _chunks.FirstOrDefault(c => c.Id == chunk.Id);
+                if (owner is null)
+                {
+                    continue;
+                }
+
+                string? ownerTenant = null;
+                owner.Metadata?.TryGetValue(RagChunkMetadata.TenantId, out ownerTenant);
+                if (owner.DocumentId != documentId || !string.Equals(ownerTenant, tenant, StringComparison.Ordinal))
+                {
+                    throw IVectorStore.CrossTenantCollision(documentId, tenant);
+                }
+            }
+
             _chunks.RemoveAll(c => c.DocumentId == documentId);
             _chunks.AddRange(list);
             return Task.CompletedTask;

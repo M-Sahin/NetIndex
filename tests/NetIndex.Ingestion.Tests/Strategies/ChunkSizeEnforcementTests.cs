@@ -78,7 +78,8 @@ public class ChunkSizeEnforcementTests
         var chunks = (await Create(name).ChunkAsync(text, Options)).ToList();
 
         chunks.Should().OnlyContain(c => c.Text.Length <= MaxChars);
-        chunks.Select(c => c.Text.Split(' ').First()).Should().OnlyContain(w => w.StartsWith("word") || w.Length > 0);
+        chunks.SelectMany(c => c.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            .Should().OnlyContain(w => System.Text.RegularExpressions.Regex.IsMatch(w, @"^word\d+$"), "whitespace splits never cut a word");
     }
 
     [Theory]
@@ -140,10 +141,85 @@ public class ChunkSizeEnforcementTests
     public Property AnyLongInput_NeverExceedsLimit_ForEveryStrategy(NonEmptyString seed, PositiveInt repeat)
     {
         var text = string.Concat(Enumerable.Repeat(seed.Get + " ", Math.Min(repeat.Get, 400) + 50));
+        var noWhitespace = string.Concat(Enumerable.Repeat(
+            new string(seed.Get.Where(c => !char.IsWhiteSpace(c)).ToArray()) + "x", Math.Min(repeat.Get, 400) + 50));
         var options = new ChunkingOptions(50, 5, "\n");
 
         return new[] { "fixed", "semantic", "recursive" }
-            .All(name => Create(name).ChunkAsync(text, options).GetAwaiter().GetResult().All(c => c.Text.Length <= 200))
+            .All(name => new[] { text, noWhitespace }
+                .All(input => Create(name).ChunkAsync(input, options).GetAwaiter().GetResult().All(c => c.Text.Length <= 200)))
             .ToProperty();
+    }
+}
+
+/// <summary>Story 2.12 review fixes: Recursive semantic stage, normalized output, configuration validation.</summary>
+public class RecursiveAndConfigurationReviewTests
+{
+    private sealed class OrthogonalEmbedder : IEmbeddingGenerator
+    {
+        public int Dimensions => 64;
+
+        public Task<float[]> GenerateAsync(string text, CancellationToken cancellationToken = default)
+            => Task.FromResult(new float[Dimensions]);
+
+        public Task<float[][]> GenerateBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default)
+        {
+            var vectors = texts.Select((_, i) =>
+            {
+                var v = new float[Dimensions];
+                v[i % Dimensions] = 1f;
+                return v;
+            }).ToArray();
+            return Task.FromResult(vectors);
+        }
+    }
+
+    [Fact]
+    public async Task Recursive_OversizedParagraph_UsesTheSemanticStageAndReturnsNormalizedChunksAsync()
+    {
+        var config = Opts.Create(new ChunkingConfiguration().FixedSize(200, 20));
+        var options = new ChunkingOptions(200, 20, "\n\n");
+        var text = string.Concat(Enumerable.Range(0, 120).Select(i => $"Sentence number {i} is about retrieval. "));
+
+        var fixedChunks = (await new FixedSizeChunkingStrategy(config).ChunkAsync(text, options)).ToList();
+        var recursive = (await new RecursiveChunkingStrategy(new OrthogonalEmbedder(), config).ChunkAsync(text, options)).ToList();
+
+        recursive.Select(c => c.Text).Should().NotEqual(fixedChunks.Select(c => c.Text));
+        recursive.Should().OnlyContain(c => c.Text.Length <= 800);
+        recursive.Should().OnlyContain(c => c.Embedding == null && c.DocumentId == "pending" && c.Metadata == null);
+        recursive.Select(c => c.Id).Should().Equal(Enumerable.Range(0, recursive.Count).Select(i => $"chunk_{i}"));
+    }
+
+    [Fact]
+    public void Semantic_And_Recursive_ValidateSizesLikeFixedSize()
+    {
+        FluentActions.Invoking(() => new ChunkingConfiguration().Semantic(0, 0)).Should().Throw<ArgumentException>();
+        FluentActions.Invoking(() => new ChunkingConfiguration().Recursive(-5, 0)).Should().Throw<ArgumentException>();
+        FluentActions.Invoking(() => new ChunkingConfiguration().Semantic(100, 100)).Should().Throw<ArgumentException>();
+        FluentActions.Invoking(() => new ChunkingConfiguration().Recursive(100, -1)).Should().Throw<ArgumentException>();
+        FluentActions.Invoking(() => new ChunkingConfiguration().Semantic(int.MaxValue, 0)).Should().Throw<ArgumentException>();
+        FluentActions.Invoking(() => new ChunkingConfiguration().FixedSize(int.MaxValue, 0)).Should().Throw<ArgumentException>();
+        FluentActions.Invoking(() => new ChunkingConfiguration().Semantic(200, 20)).Should().NotThrow();
+        FluentActions.Invoking(() => new ChunkingConfiguration().Recursive()).Should().NotThrow();
+    }
+
+    [Theory]
+    [InlineData("fixed")]
+    [InlineData("semantic")]
+    [InlineData("recursive")]
+    public async Task Strategies_RejectOverlapNotBelowSizeAndOverflowingSizesAsync(string name)
+    {
+        var config = Opts.Create(new ChunkingConfiguration());
+        IChunkingStrategy strategy = name switch
+        {
+            "fixed" => new FixedSizeChunkingStrategy(config),
+            "semantic" => new SemanticChunkingStrategy(new OrthogonalEmbedder(), config),
+            _ => new RecursiveChunkingStrategy(new OrthogonalEmbedder(), config),
+        };
+
+        await FluentActions.Awaiting(() => strategy.ChunkAsync("text", new ChunkingOptions(10, 10, "\n")))
+            .Should().ThrowAsync<ArgumentException>();
+        await FluentActions.Awaiting(() => strategy.ChunkAsync("text", new ChunkingOptions(int.MaxValue, 0, "\n")))
+            .Should().ThrowAsync<ArgumentException>();
     }
 }

@@ -183,7 +183,7 @@ public sealed class ChunkingAndReIngestTests
         tenant.Id = "tenant-b";
         var exception = await Assert.ThrowsAsync<NetIndexAuthorizationException>(
             () => pipeline.IngestAsync(CreateDocument("doc-1", "tenant b content")));
-        Assert.Equal("CrossTenantDocumentCollision", exception.FailureReason);
+        Assert.Equal(IVectorStore.CROSS_TENANT_DOCUMENT_COLLISION, exception.FailureReason);
 
         var chunks = await AllChunksAsync(provider);
         Assert.Equal(3, chunks.Count);

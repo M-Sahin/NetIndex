@@ -184,6 +184,14 @@ public sealed class NetIndexPipeline : INetIndexPipeline
 
         ingestActivity?.SetTag(NetIndexSpanTags.TenantId, tenantId);
 
+        if (string.IsNullOrWhiteSpace(document.Id))
+        {
+            var blankId = new ArgumentException("Document id must not be null or whitespace.", nameof(document));
+            MarkActivityError(ingestActivity, blankId, "Blank document id");
+            NetIndexPipelineLogger.LogIngestFailed(_logger, sw.ElapsedMilliseconds, tenantId, blankId);
+            throw blankId;
+        }
+
         // Empty content is rejected before any store call: ingest never deletes, removal stays an explicit DeleteAsync.
         if (string.IsNullOrWhiteSpace(document.Content))
         {
@@ -206,7 +214,7 @@ public sealed class NetIndexPipeline : INetIndexPipeline
                 try
                 {
                     var chunks = await strategy.ChunkAsync(document.Content, _chunkingOptions, cancellationToken);
-                    chunkList = chunks.ToList();
+                    chunkList = chunks.Where(c => !string.IsNullOrWhiteSpace(c.Text)).ToList();
                     chunkActivity?.SetTag(NetIndexSpanTags.ChunkCount, chunkList.Count);
                 }
                 catch (Exception exception)

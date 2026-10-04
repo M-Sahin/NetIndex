@@ -285,7 +285,7 @@ public abstract class VectorStoreContractSuite : IAsyncLifetime
             CancellationToken.None));
 
         var auth = Assert.IsType<NetIndexAuthorizationException>(exception);
-        Assert.Equal("CrossTenantDocumentCollision", auth.FailureReason);
+        Assert.Equal(IVectorStore.CROSS_TENANT_DOCUMENT_COLLISION, auth.FailureReason);
 
         var results = await ReadAllAsync(Store.QueryAsync(vector, top: 50, CancellationToken.None), CancellationToken.None);
         Assert.Equal(3, results.Count);
@@ -379,5 +379,84 @@ public abstract class VectorStoreContractSuite : IAsyncLifetime
         await cts.CancelAsync();
         await reader;
         Assert.Equal(0, violations);
+    }
+
+    [Fact]
+    public async Task Replace_NewChunkIdOwnedByAnotherDocument_IsRejectedAndNothingChangesAsync()
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        await Store.ReplaceDocumentAsync(
+            "doc-x",
+            new[] { CreateTenantChunk("doc-x_chunk_0", "doc-x", vector, "tenant-a") },
+            CancellationToken.None);
+
+        // Another document (and tenant) tries to take the row over through a colliding chunk id.
+        var exception = await Record.ExceptionAsync(() => Store.ReplaceDocumentAsync(
+            "doc-y",
+            new[] { CreateTenantChunk("doc-x_chunk_0", "doc-y", vector, "tenant-b") },
+            CancellationToken.None));
+
+        var auth = Assert.IsType<NetIndexAuthorizationException>(exception);
+        Assert.Equal(IVectorStore.CROSS_TENANT_DOCUMENT_COLLISION, auth.FailureReason);
+        var results = await ReadAllAsync(Store.QueryAsync(vector, top: 50, CancellationToken.None), CancellationToken.None);
+        var only = Assert.Single(results);
+        Assert.Equal("doc-x", only.Item.DocumentId);
+        Assert.Equal("tenant-a", only.Item.Metadata![RagChunkMetadata.TenantId]);
+    }
+
+    [Fact]
+    public async Task Replace_DuplicateChunkIdsInTheNewSet_AreRejectedAsync()
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        var exception = await Record.ExceptionAsync(() => Store.ReplaceDocumentAsync(
+            "doc-d",
+            new[]
+            {
+                CreateTenantChunk("doc-d_chunk_0", "doc-d", vector, "tenant-a"),
+                CreateTenantChunk("doc-d_chunk_0", "doc-d", vector, "tenant-a"),
+            },
+            CancellationToken.None));
+
+        Assert.IsAssignableFrom<ArgumentException>(exception);
+        Assert.Empty(await QueryIdsAsync());
+    }
+
+    [Fact]
+    public async Task Replace_MixedTenantNewSet_IsRejectedAsMalformedAsync()
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        var exception = await Record.ExceptionAsync(() => Store.ReplaceDocumentAsync(
+            "doc-m",
+            new[]
+            {
+                CreateTenantChunk("doc-m_chunk_0", "doc-m", vector, "tenant-a"),
+                CreateTenantChunk("doc-m_chunk_1", "doc-m", vector, "tenant-b"),
+            },
+            CancellationToken.None));
+
+        Assert.IsAssignableFrom<ArgumentException>(exception);
+        Assert.Empty(await QueryIdsAsync());
+    }
+
+    [Fact]
+    public async Task Replace_EmptyOrTenantlessSetOverTenantStampedChunks_IsRejectedAndLeavesTheOriginalIntactAsync()
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        await Store.ReplaceDocumentAsync(
+            "doc-e",
+            Enumerable.Range(0, 2).Select(i => CreateTenantChunk($"doc-e_chunk_{i}", "doc-e", vector, "tenant-a")),
+            CancellationToken.None);
+
+        var empty = await Record.ExceptionAsync(() => Store.ReplaceDocumentAsync("doc-e", Array.Empty<RagChunk>(), CancellationToken.None));
+        var tenantless = await Record.ExceptionAsync(() => Store.ReplaceDocumentAsync(
+            "doc-e",
+            new[] { CreateTenantChunk("doc-e_chunk_0", "doc-e", vector, null) },
+            CancellationToken.None));
+
+        Assert.IsType<NetIndexAuthorizationException>(empty);
+        Assert.IsType<NetIndexAuthorizationException>(tenantless);
+        var results = await ReadAllAsync(Store.QueryAsync(vector, top: 50, CancellationToken.None), CancellationToken.None);
+        Assert.Equal(2, results.Count);
+        Assert.All(results, r => Assert.Equal("tenant-a", r.Item.Metadata![RagChunkMetadata.TenantId]));
     }
 }

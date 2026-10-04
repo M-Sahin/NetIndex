@@ -233,10 +233,16 @@ public sealed class PgvectorVectorStore : IVectorStore, IAsyncDisposable
                 checkCmd.Transaction = transaction;
                 checkCmd.CommandText = """
                     SELECT COUNT(*) FROM rag_chunks
-                    WHERE document_id = @documentId
-                      AND (metadata_json::jsonb ->> 'netindex:tenant_id') IS DISTINCT FROM @tenant
+                    WHERE (document_id = @documentId OR chunk_id = ANY(@chunkIds))
+                      AND (document_id <> @documentId
+                           OR (metadata_json::jsonb ->> @tenantKey) IS DISTINCT FROM @tenant)
                     """;
                 checkCmd.Parameters.AddWithValue("documentId", documentId);
+                checkCmd.Parameters.AddWithValue("tenantKey", RagChunkMetadata.TenantId);
+                checkCmd.Parameters.Add(new NpgsqlParameter("chunkIds", NpgsqlDbType.Array | NpgsqlDbType.Text)
+                {
+                    Value = chunkList.Select(c => c.Id).ToArray(),
+                });
                 checkCmd.Parameters.Add(new NpgsqlParameter("tenant", NpgsqlDbType.Text)
                 {
                     Value = (object?)newTenant ?? DBNull.Value,
@@ -425,6 +431,13 @@ public sealed class PgvectorVectorStore : IVectorStore, IAsyncDisposable
                             actualValue: _dimensions);
                     }
                 }
+            }
+
+            // ReplaceDocumentAsync and DeleteAsync look chunks up by document_id.
+            await using (var cmd = connection.CreateCommand())
+            {
+                cmd.CommandText = "CREATE INDEX IF NOT EXISTS idx_rag_chunks_document_id ON rag_chunks (document_id)";
+                await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
 
             await using (var cmd = connection.CreateCommand())

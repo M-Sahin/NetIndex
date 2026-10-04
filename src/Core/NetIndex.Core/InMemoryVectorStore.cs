@@ -122,6 +122,20 @@ public sealed class InMemoryVectorStore : IVectorStore
                 }
             }
 
+            foreach (var chunk in chunkList)
+            {
+                if (_chunks.TryGetValue(chunk.Id, out var owner))
+                {
+                    string? ownerTenant = null;
+                    owner.Metadata?.TryGetValue(RagChunkMetadata.TenantId, out ownerTenant);
+                    if (!string.Equals(owner.DocumentId, documentId, StringComparison.Ordinal)
+                        || !string.Equals(ownerTenant, newTenant, StringComparison.Ordinal))
+                    {
+                        throw IVectorStore.CrossTenantCollision(documentId, newTenant);
+                    }
+                }
+            }
+
             RemoveDocument(documentId);
             foreach (var chunk in chunkList)
             {

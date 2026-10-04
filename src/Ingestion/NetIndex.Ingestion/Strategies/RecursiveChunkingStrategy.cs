@@ -40,10 +40,11 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(options);
 
+        ChunkSizeEnforcer.ValidateOptions(options);
         var maxChars = TokensToChars(options.ChunkSize);
 
         // Stage 1: Attempt fixed-size chunking
-        var fixedChunks = await _fixedSizeStrategy.ChunkAsync(text, options, cancellationToken).ConfigureAwait(false);
+        var fixedChunks = await _fixedSizeStrategy.ChunkRawAsync(text, options, cancellationToken).ConfigureAwait(false);
         var fixedChunksList = fixedChunks.ToList();
 
         // Check if any chunk exceeds the max character limit
