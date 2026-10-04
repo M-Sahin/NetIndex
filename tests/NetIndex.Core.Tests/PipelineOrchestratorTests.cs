@@ -41,7 +41,7 @@ public sealed class PipelineOrchestratorTests
             .Returns(Task.FromResult(new float[][] { new float[384] }));
 
         var upsertChunks = new List<RagChunk>();
-        mocks.MockStore.UpsertAsync(Arg.Do<IEnumerable<RagChunk>>(c => upsertChunks.AddRange(c)), Arg.Any<CancellationToken>())
+        mocks.MockStore.ReplaceDocumentAsync(Arg.Any<string>(), Arg.Do<IEnumerable<RagChunk>>(c => upsertChunks.AddRange(c)), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
         var document = CreateDocument("doc-1", "test content");

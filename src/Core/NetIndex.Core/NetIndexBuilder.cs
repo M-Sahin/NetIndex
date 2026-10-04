@@ -149,10 +149,11 @@ public sealed class NetIndexBuilder : INetIndexBuilder
             var reranker = sp.GetService<IDocumentReranker>();
             var tenantFilteringOptions = sp.GetService<TenantFilteringOptions>();
             var logger = sp.GetService<ILogger<NetIndexPipeline>>();
+            var chunkingOptions = sp.GetService<ChunkingOptions>();
 
             return new NetIndexPipeline(
                 tenantResolver, chunkingStrategy, embeddingGenerator, vectorStore, chatClient, reranker,
-                tenantFilteringOptions, logger);
+                tenantFilteringOptions, logger, chunkingOptions);
         });
         _services.TryAddSingleton<NetIndexPipeline>(sp =>
             (NetIndexPipeline)sp.GetRequiredService<INetIndexPipeline>());

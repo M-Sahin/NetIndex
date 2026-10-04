@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Options;
 using NetIndex.Core.Abstractions;
@@ -14,7 +13,9 @@ namespace NetIndex.Storage.InMemory;
 /// </remarks>
 public sealed class InMemoryVectorStore : IVectorStore
 {
-    private readonly ConcurrentDictionary<string, RagChunk> _chunks = new(StringComparer.Ordinal);
+    // All reads and writes go through _gate so that ReplaceDocumentAsync is atomic for queries.
+    private readonly object _gate = new();
+    private readonly Dictionary<string, RagChunk> _chunks = new(StringComparer.Ordinal);
     private readonly int _dimensions;
 
     /// <summary>Initializes with the configured in-memory options.</summary>
@@ -34,31 +35,19 @@ public sealed class InMemoryVectorStore : IVectorStore
     {
         ArgumentNullException.ThrowIfNull(chunks);
 
-        foreach (var chunk in chunks)
+        var chunkList = chunks.ToList();
+        foreach (var chunk in chunkList)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            ArgumentNullException.ThrowIfNull(chunk);
+            ValidateChunk(chunk);
+        }
 
-            if (chunk.Embedding is null)
+        lock (_gate)
+        {
+            foreach (var chunk in chunkList)
             {
-                throw new NetIndexStorageException(
-                    "Chunk embedding is required for upsert.",
-                    nameof(InMemoryVectorStore),
-                    "Upsert",
-                    chunk.DocumentId);
+                _chunks[chunk.Id] = chunk;
             }
-
-            if (chunk.Embedding.Length != _dimensions)
-            {
-                throw new NetIndexConfigurationException(
-                    $"Embedding dimension mismatch: expected {_dimensions}, got {chunk.Embedding.Length}. " +
-                    $"Ensure InMemoryOptions.Dimensions matches IEmbeddingGenerator.Dimensions.",
-                    propertyName: "Dimensions",
-                    expectedValue: _dimensions,
-                    actualValue: chunk.Embedding.Length);
-            }
-
-            _chunks[chunk.Id] = chunk;
         }
 
         return Task.CompletedTask;
@@ -82,7 +71,13 @@ public sealed class InMemoryVectorStore : IVectorStore
                 null);
         }
 
-        var matches = _chunks.Values
+        RagChunk[] snapshot;
+        lock (_gate)
+        {
+            snapshot = _chunks.Values.ToArray();
+        }
+
+        var matches = snapshot
             .Where(chunk => chunk.Embedding is not null)
             .Select(chunk => new SearchResult<RagChunk>(chunk, CosineSimilarity(queryVector, chunk.Embedding!), chunk.DocumentId))
             .OrderByDescending(result => result.Score)
@@ -103,6 +98,73 @@ public sealed class InMemoryVectorStore : IVectorStore
         ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
         cancellationToken.ThrowIfCancellationRequested();
 
+        lock (_gate)
+        {
+            RemoveDocument(documentId);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task ReplaceDocumentAsync(
+        string documentId,
+        IEnumerable<RagChunk> chunks,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunks);
+        var chunkList = chunks.ToList();
+        var newTenant = IVectorStore.ValidateReplacement(documentId, chunkList);
+        foreach (var chunk in chunkList)
+        {
+            ValidateChunk(chunk);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_gate)
+        {
+            foreach (var existing in _chunks.Values)
+            {
+                if (!string.Equals(existing.DocumentId, documentId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                string? existingTenant = null;
+                existing.Metadata?.TryGetValue(RagChunkMetadata.TenantId, out existingTenant);
+                if (!string.Equals(existingTenant, newTenant, StringComparison.Ordinal))
+                {
+                    throw IVectorStore.CrossTenantCollision(documentId, newTenant);
+                }
+            }
+
+            foreach (var chunk in chunkList)
+            {
+                if (_chunks.TryGetValue(chunk.Id, out var owner))
+                {
+                    string? ownerTenant = null;
+                    owner.Metadata?.TryGetValue(RagChunkMetadata.TenantId, out ownerTenant);
+                    if (!string.Equals(owner.DocumentId, documentId, StringComparison.Ordinal)
+                        || !string.Equals(ownerTenant, newTenant, StringComparison.Ordinal))
+                    {
+                        throw IVectorStore.CrossTenantCollision(documentId, newTenant);
+                    }
+                }
+            }
+
+            RemoveDocument(documentId);
+            foreach (var chunk in chunkList)
+            {
+                _chunks[chunk.Id] = chunk;
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void RemoveDocument(string documentId)
+    {
         var keysToRemove = _chunks
             .Where(e => string.Equals(e.Value.DocumentId, documentId, StringComparison.Ordinal))
             .Select(e => e.Key)
@@ -110,10 +172,32 @@ public sealed class InMemoryVectorStore : IVectorStore
 
         foreach (var key in keysToRemove)
         {
-            _chunks.TryRemove(key, out _);
+            _chunks.Remove(key);
+        }
+    }
+
+    private void ValidateChunk(RagChunk chunk)
+    {
+        ArgumentNullException.ThrowIfNull(chunk);
+
+        if (chunk.Embedding is null)
+        {
+            throw new NetIndexStorageException(
+                "Chunk embedding is required for upsert.",
+                nameof(InMemoryVectorStore),
+                "Upsert",
+                chunk.DocumentId);
         }
 
-        return Task.CompletedTask;
+        if (chunk.Embedding.Length != _dimensions)
+        {
+            throw new NetIndexConfigurationException(
+                $"Embedding dimension mismatch: expected {_dimensions}, got {chunk.Embedding.Length}. " +
+                $"Ensure InMemoryOptions.Dimensions matches IEmbeddingGenerator.Dimensions.",
+                propertyName: "Dimensions",
+                expectedValue: _dimensions,
+                actualValue: chunk.Embedding.Length);
+        }
     }
 
     private static float CosineSimilarity(float[] left, float[] right)

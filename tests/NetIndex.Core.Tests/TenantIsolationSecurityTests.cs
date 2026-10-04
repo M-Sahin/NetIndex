@@ -88,7 +88,7 @@ public sealed class TenantIsolationSecurityTests
             .Returns(Task.FromResult(new float[][] { new float[384], new float[384] }));
 
         var upsertedChunks = new List<RagChunk>();
-        mocks.MockStore.UpsertAsync(Arg.Do<IEnumerable<RagChunk>>(c => upsertedChunks.AddRange(c)), Arg.Any<CancellationToken>())
+        mocks.MockStore.ReplaceDocumentAsync(Arg.Any<string>(), Arg.Do<IEnumerable<RagChunk>>(c => upsertedChunks.AddRange(c)), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
         await pipeline.IngestAsync(CreateDocument("doc-1", "content"));

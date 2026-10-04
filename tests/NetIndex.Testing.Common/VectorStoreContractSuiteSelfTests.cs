@@ -75,6 +75,53 @@ public sealed class VectorStoreContractSuiteSelfTests : VectorStoreContractSuite
             return Task.CompletedTask;
         }
 
+        public Task ReplaceDocumentAsync(string documentId, IEnumerable<RagChunk> chunks, CancellationToken cancellationToken = default)
+        {
+            var list = chunks.ToList();
+            var tenant = IVectorStore.ValidateReplacement(documentId, list);
+            foreach (var chunk in list)
+            {
+                if (chunk.Embedding is null || chunk.Embedding.Length != Dimensions)
+                {
+                    throw new NetIndexConfigurationException(
+                        "Embedding dimension mismatch.",
+                        nameof(RagChunk.Embedding),
+                        Dimensions,
+                        chunk.Embedding?.Length);
+                }
+            }
+
+            foreach (var existing in _chunks.Where(c => c.DocumentId == documentId))
+            {
+                string? existingTenant = null;
+                existing.Metadata?.TryGetValue(RagChunkMetadata.TenantId, out existingTenant);
+                if (!string.Equals(existingTenant, tenant, StringComparison.Ordinal))
+                {
+                    throw IVectorStore.CrossTenantCollision(documentId, tenant);
+                }
+            }
+
+            foreach (var chunk in list)
+            {
+                var owner = _chunks.FirstOrDefault(c => c.Id == chunk.Id);
+                if (owner is null)
+                {
+                    continue;
+                }
+
+                string? ownerTenant = null;
+                owner.Metadata?.TryGetValue(RagChunkMetadata.TenantId, out ownerTenant);
+                if (owner.DocumentId != documentId || !string.Equals(ownerTenant, tenant, StringComparison.Ordinal))
+                {
+                    throw IVectorStore.CrossTenantCollision(documentId, tenant);
+                }
+            }
+
+            _chunks.RemoveAll(c => c.DocumentId == documentId);
+            _chunks.AddRange(list);
+            return Task.CompletedTask;
+        }
+
         public void Reset() => _chunks.Clear();
 
         private static float CosineSimilarity(float[] left, float[] right)

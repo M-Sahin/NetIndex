@@ -48,12 +48,10 @@ public sealed class SemanticChunkingStrategy : IChunkingStrategy
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(options);
 
-        if (options.ChunkSize <= 0)
-        {
-            throw new ArgumentException("ChunkSize must be greater than zero.", nameof(options));
-        }
+        ChunkSizeEnforcer.ValidateOptions(options);
 
         var maxChars = TokensToChars(options.ChunkSize);
+        var overlapChars = TokensToChars(options.ChunkOverlap);
 
         // Split into sentences
         var sentences = SentenceSplitter.Split(text)
@@ -91,10 +89,9 @@ public sealed class SemanticChunkingStrategy : IChunkingStrategy
         if (candidates.Count <= 1)
         {
             // Single candidate — no semantic boundary to detect
-            return new[]
-            {
-                new RagChunk("chunk_0", candidates.Count > 0 ? candidates[0] : text.Trim(), null, "pending", null)
-            };
+            return ChunkSizeEnforcer.Enforce(
+                new[] { new RagChunk("chunk_0", candidates.Count > 0 ? candidates[0] : text.Trim(), null, "pending", null) },
+                maxChars, overlapChars, cancellationToken);
         }
 
         // Compute embeddings for all candidates
@@ -137,7 +134,7 @@ public sealed class SemanticChunkingStrategy : IChunkingStrategy
             chunkIndex++;
         }
 
-        return chunks;
+        return ChunkSizeEnforcer.Enforce(chunks, maxChars, overlapChars, cancellationToken);
     }
 
     /// <summary>

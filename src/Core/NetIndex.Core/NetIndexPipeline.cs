@@ -17,7 +17,7 @@ namespace NetIndex.Core;
 /// </summary>
 public sealed class NetIndexPipeline : INetIndexPipeline
 {
-    private static readonly ChunkingOptions DefaultChunkingOptions =
+    private static readonly ChunkingOptions FallbackChunkingOptions =
         new(1000, 200, "\n\n");
 
     private readonly ITenantResolver _tenantResolver;
@@ -27,6 +27,7 @@ public sealed class NetIndexPipeline : INetIndexPipeline
     private readonly IChatClient _chatClient;
     private readonly IDocumentReranker? _reranker;
     private readonly TenantFilteringOptions _tenantFilteringOptions;
+    private readonly ChunkingOptions _chunkingOptions;
     private readonly ILogger<NetIndexPipeline> _logger;
 
     private sealed class QueryLogMetrics
@@ -82,7 +83,37 @@ public sealed class NetIndexPipeline : INetIndexPipeline
         IDocumentReranker? reranker,
         TenantFilteringOptions? tenantFilteringOptions,
         ILogger<NetIndexPipeline>? logger)
+        : this(tenantResolver, chunkingStrategy, embeddingGenerator, vectorStore, chatClient, reranker, tenantFilteringOptions, logger, null)
     {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="NetIndexPipeline"/> class.
+    /// </summary>
+    /// <param name="tenantResolver">Tenant resolver for authorization checks.</param>
+    /// <param name="chunkingStrategy">Optional chunking strategy. Null uses pass-through default.</param>
+    /// <param name="embeddingGenerator">Embedding generator for text vectors.</param>
+    /// <param name="vectorStore">Vector store for persistence and similarity search.</param>
+    /// <param name="chatClient">Chat client for LLM generation.</param>
+    /// <param name="reranker">Optional reranker for post-retrieval scoring.</param>
+    /// <param name="tenantFilteringOptions">Optional tenant filtering options. Null uses defaults.</param>
+    /// <param name="logger">Optional logger. Null falls back to <see cref="NullLogger{T}"/>.</param>
+    /// <param name="chunkingOptions">
+    /// Chunk size, overlap and separator passed to the chunking strategy. Null uses the built-in
+    /// fallback (1000 / 200 / "\n\n"), which keeps pipelines without configured chunking unchanged.
+    /// </param>
+    public NetIndexPipeline(
+        ITenantResolver tenantResolver,
+        IChunkingStrategy? chunkingStrategy,
+        IEmbeddingGenerator embeddingGenerator,
+        IVectorStore vectorStore,
+        IChatClient chatClient,
+        IDocumentReranker? reranker,
+        TenantFilteringOptions? tenantFilteringOptions,
+        ILogger<NetIndexPipeline>? logger,
+        ChunkingOptions? chunkingOptions)
+    {
+        _chunkingOptions = chunkingOptions ?? FallbackChunkingOptions;
         _tenantResolver = tenantResolver ?? throw new ArgumentNullException(nameof(tenantResolver));
         _chunkingStrategy = new(() => chunkingStrategy ?? new PassThroughChunkingStrategy());
         _embeddingGenerator = embeddingGenerator ?? throw new ArgumentNullException(nameof(embeddingGenerator));
@@ -153,6 +184,26 @@ public sealed class NetIndexPipeline : INetIndexPipeline
 
         ingestActivity?.SetTag(NetIndexSpanTags.TenantId, tenantId);
 
+        if (string.IsNullOrWhiteSpace(document.Id))
+        {
+            var blankId = new ArgumentException("Document id must not be null or whitespace.", nameof(document));
+            MarkActivityError(ingestActivity, blankId, "Blank document id");
+            NetIndexPipelineLogger.LogIngestFailed(_logger, sw.ElapsedMilliseconds, tenantId, blankId);
+            throw blankId;
+        }
+
+        // Empty content is rejected before any store call: ingest never deletes, removal stays an explicit DeleteAsync.
+        if (string.IsNullOrWhiteSpace(document.Content))
+        {
+            var empty = new ArgumentException(
+                $"Document '{document.Id}' has empty content. Ingest rejects it and changes nothing; use DeleteAsync to remove a document.",
+                nameof(document));
+            MarkActivityError(ingestActivity, empty, "Empty document content");
+            NetIndexPipelineLogger.LogIngestFailed(_logger, sw.ElapsedMilliseconds, tenantId, empty);
+            throw empty;
+        }
+
+        ArgumentException? noChunks = null;
         try
         {
             var strategy = _chunkingStrategy.Value;
@@ -162,8 +213,8 @@ public sealed class NetIndexPipeline : INetIndexPipeline
             {
                 try
                 {
-                    var chunks = await strategy.ChunkAsync(document.Content, DefaultChunkingOptions, cancellationToken);
-                    chunkList = chunks.ToList();
+                    var chunks = await strategy.ChunkAsync(document.Content, _chunkingOptions, cancellationToken);
+                    chunkList = chunks.Where(c => !string.IsNullOrWhiteSpace(c.Text)).ToList();
                     chunkActivity?.SetTag(NetIndexSpanTags.ChunkCount, chunkList.Count);
                 }
                 catch (Exception exception)
@@ -171,6 +222,14 @@ public sealed class NetIndexPipeline : INetIndexPipeline
                     MarkActivityError(chunkActivity, exception, "Chunking failed");
                     throw;
                 }
+            }
+
+            if (chunkList.Count == 0)
+            {
+                noChunks = new ArgumentException(
+                    $"Document '{document.Id}' produced no chunks. Ingest rejects it and changes nothing; use DeleteAsync to remove a document.",
+                    nameof(document));
+                throw noChunks;
             }
 
             var texts = chunkList.Select(c => c.Text).ToArray();
@@ -235,7 +294,9 @@ public sealed class NetIndexPipeline : INetIndexPipeline
                     { NetIndexSpanTags.ChunkCount, enrichedChunks.Count },
                 }));
 
-            await _vectorStore.UpsertAsync(enrichedChunks, cancellationToken);
+            // Replace (not upsert) so a shorter re-ingest leaves no stale chunks retrievable, and a
+            // document-id collision with another tenant is rejected fail-closed by the store.
+            await _vectorStore.ReplaceDocumentAsync(document.Id, enrichedChunks, cancellationToken);
 
             NetIndexPipelineLogger.LogIngestSucceeded(
                 _logger, sw.ElapsedMilliseconds, tenantId, document.Id,
@@ -246,6 +307,12 @@ public sealed class NetIndexPipeline : INetIndexPipeline
         catch (NetIndexException exception)
         {
             MarkActivityError(ingestActivity, exception, "NetIndex exception in ingest");
+            NetIndexPipelineLogger.LogIngestFailed(_logger, sw.ElapsedMilliseconds, tenantId, exception);
+            throw;
+        }
+        catch (ArgumentException exception) when (ReferenceEquals(exception, noChunks))
+        {
+            MarkActivityError(ingestActivity, exception, "Document chunked to nothing");
             NetIndexPipelineLogger.LogIngestFailed(_logger, sw.ElapsedMilliseconds, tenantId, exception);
             throw;
         }

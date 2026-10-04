@@ -21,6 +21,8 @@ public interface INetIndexPipeline
     /// <param name="document">The document to ingest. Content must be non-null.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <exception cref="NetIndexAuthorizationException">Thrown when authorization fails.</exception>
+    /// <exception cref="ArgumentException">Thrown when the document id is blank, the content is empty or whitespace, or the content yields no non-blank chunks. Nothing is written or deleted.</exception>
+    /// <exception cref="NetIndexAuthorizationException">Also thrown (<c>CrossTenantDocumentCollision</c>) when the document id is already held by another tenant. Nothing is written or deleted.</exception>
     /// <exception cref="NetIndexProviderException">Thrown when a pipeline stage (chunk/embed/store) fails.</exception>
     Task IngestAsync(IDocument document, CancellationToken cancellationToken = default);
 

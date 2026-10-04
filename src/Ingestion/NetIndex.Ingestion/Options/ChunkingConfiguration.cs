@@ -15,6 +15,8 @@ public sealed class ChunkingConfiguration
     /// <summary>
     /// Gets the strategy selected via one of the fluent methods.
     /// </summary>
+    private const int MaxChunkSizeTokens = int.MaxValue / 4;
+
     internal ChunkingStrategyType SelectedStrategy { get; set; }
 
     /// <summary>
@@ -76,6 +78,7 @@ public sealed class ChunkingConfiguration
     /// <returns>This instance for fluent chaining.</returns>
     public ChunkingConfiguration Semantic(int? maxChunkSize = null, int? overlap = null)
     {
+        ValidateOptional(maxChunkSize, overlap);
         SelectedStrategy = ChunkingStrategyType.Semantic;
         SemanticMaxChunkSize = maxChunkSize;
         SemanticOverlap = overlap;
@@ -90,6 +93,7 @@ public sealed class ChunkingConfiguration
     /// <returns>This instance for fluent chaining.</returns>
     public ChunkingConfiguration Recursive(int? maxChunkSize = null, int? overlap = null)
     {
+        ValidateOptional(maxChunkSize, overlap);
         SelectedStrategy = ChunkingStrategyType.Recursive;
         RecursiveMaxChunkSize = maxChunkSize;
         RecursiveOverlap = overlap;
@@ -112,6 +116,12 @@ public sealed class ChunkingConfiguration
         return new ChunkingOptions(size, overlap, Separator);
     }
 
+    // Optional values fall back to the FixedSize settings, so validate the effective pair.
+    private void ValidateOptional(int? maxChunkSize, int? overlap)
+    {
+        ValidateChunkParameters(maxChunkSize ?? FixedSizeChunkSize, overlap ?? FixedSizeOverlap);
+    }
+
     private static void ValidateChunkParameters(int chunkSize, int overlap)
     {
         if (chunkSize <= 0)
@@ -127,6 +137,11 @@ public sealed class ChunkingConfiguration
         if (overlap >= chunkSize)
         {
             throw new ArgumentException("Overlap must be less than ChunkSize.", nameof(overlap));
+        }
+
+        if (chunkSize > MaxChunkSizeTokens)
+        {
+            throw new ArgumentException($"ChunkSize must not exceed {MaxChunkSizeTokens} tokens (4 characters per token must fit an int).", nameof(chunkSize));
         }
     }
 }

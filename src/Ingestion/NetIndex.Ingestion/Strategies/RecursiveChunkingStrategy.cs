@@ -40,10 +40,11 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(options);
 
+        ChunkSizeEnforcer.ValidateOptions(options);
         var maxChars = TokensToChars(options.ChunkSize);
 
         // Stage 1: Attempt fixed-size chunking
-        var fixedChunks = await _fixedSizeStrategy.ChunkAsync(text, options, cancellationToken).ConfigureAwait(false);
+        var fixedChunks = await _fixedSizeStrategy.ChunkRawAsync(text, options, cancellationToken).ConfigureAwait(false);
         var fixedChunksList = fixedChunks.ToList();
 
         // Check if any chunk exceeds the max character limit
@@ -88,13 +89,9 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
             currentFixedIndex++;
         }
 
-        // Re-index chunk IDs to be sequential
-        return result.Select((chunk, index) => new RagChunk(
-            $"chunk_{index}",
-            chunk.Text,
-            null,
-            "pending",
-            null));
+        // Final size enforcement, then sequential chunk IDs
+        return ChunkSizeEnforcer.Enforce(
+            result, maxChars, TokensToChars(options.ChunkOverlap), cancellationToken);
     }
 
     private static int TokensToChars(int tokens) => tokens * CharsPerToken;

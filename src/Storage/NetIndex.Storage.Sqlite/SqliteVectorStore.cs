@@ -135,7 +135,17 @@ public sealed class SqliteVectorStore : IVectorStore, IAsyncDisposable
         List<SearchResult<RagChunk>> results;
         try
         {
-            results = await ExecuteQueryAsync(queryVector, top, cancellationToken).ConfigureAwait(false);
+            // The connection is shared with writers; hold the write lock so a query never observes an
+            // uncommitted (partially replaced) document.
+            await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                results = await ExecuteQueryAsync(queryVector, top, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _writeLock.Release();
+            }
         }
         catch (ObjectDisposedException) when (_disposed)
         {
@@ -232,6 +242,125 @@ public sealed class SqliteVectorStore : IVectorStore, IAsyncDisposable
                 $"SQLite delete failed: {ex.Message}",
                 "SqliteVectorStore",
                 "Delete",
+                documentId,
+                ex);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task ReplaceDocumentAsync(
+        string documentId,
+        IEnumerable<RagChunk> chunks,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunks);
+        ThrowIfDisposed();
+
+        var chunkList = chunks.ToList();
+        var newTenant = IVectorStore.ValidateReplacement(documentId, chunkList);
+        foreach (var chunk in chunkList)
+        {
+            if (chunk.Embedding is null)
+            {
+                throw new NetIndexStorageException(
+                    "Chunk embedding is required for upsert.",
+                    "SqliteVectorStore",
+                    "Replace",
+                    chunk.DocumentId);
+            }
+
+            if (chunk.Embedding.Length != _dimensions)
+            {
+                throw new NetIndexConfigurationException(
+                    $"Embedding dimension mismatch: expected {_dimensions}, got {chunk.Embedding.Length}. " +
+                    $"Ensure SqliteOptions.Dimensions matches IEmbeddingGenerator.Dimensions.",
+                    propertyName: "Dimensions",
+                    expectedValue: _dimensions,
+                    actualValue: chunk.Embedding.Length);
+            }
+        }
+
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            using var transaction = _connection.BeginTransaction();
+
+            // Fail closed: any existing chunk of this document with a different (or missing) tenant tag rejects the replace.
+            long foreign;
+            using (var checkCmd = _connection.CreateCommand())
+            {
+                checkCmd.Transaction = transaction;
+                checkCmd.CommandText = """
+                    SELECT COUNT(*) FROM rag_chunks
+                    WHERE (document_id = @documentId OR chunk_id IN (SELECT value FROM json_each(@chunkIds)))
+                      AND (document_id <> @documentId
+                           OR json_extract(metadata_json, @tenantPath) IS NOT @tenant)
+                    """;
+                checkCmd.Parameters.AddWithValue("@documentId", documentId);
+                checkCmd.Parameters.AddWithValue("@tenantPath", "$.\"" + RagChunkMetadata.TenantId + "\"");
+                checkCmd.Parameters.AddWithValue("@chunkIds", JsonSerializer.Serialize(chunkList.Select(c => c.Id)));
+                checkCmd.Parameters.AddWithValue("@tenant", (object?)newTenant ?? DBNull.Value);
+                foreign = Convert.ToInt64(await checkCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
+            }
+
+            if (foreign > 0)
+            {
+                throw IVectorStore.CrossTenantCollision(documentId, newTenant);
+            }
+
+            using (var vecCmd = _connection.CreateCommand())
+            {
+                vecCmd.Transaction = transaction;
+                vecCmd.CommandText = """
+                    DELETE FROM rag_chunks_vec
+                    WHERE rowid IN (SELECT rowid FROM rag_chunks WHERE document_id = @documentId)
+                    """;
+                vecCmd.Parameters.AddWithValue("@documentId", documentId);
+                await vecCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            using (var metaCmd = _connection.CreateCommand())
+            {
+                metaCmd.Transaction = transaction;
+                metaCmd.CommandText = "DELETE FROM rag_chunks WHERE document_id = @documentId";
+                metaCmd.Parameters.AddWithValue("@documentId", documentId);
+                await metaCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            foreach (var chunk in chunkList)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await UpsertChunkAsync(chunk, transaction).ConfigureAwait(false);
+            }
+
+            transaction.Commit();
+        }
+        catch (ObjectDisposedException) when (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(SqliteVectorStore));
+        }
+        catch (SqliteException ex)
+        {
+            throw new NetIndexStorageException(
+                $"SQLite replace failed: {ex.Message}",
+                "SqliteVectorStore",
+                "Replace",
+                documentId,
+                ex);
+        }
+        catch (JsonException ex)
+        {
+            throw new NetIndexStorageException(
+                $"Failed to serialize chunk metadata: {ex.Message}",
+                "SqliteVectorStore",
+                "Replace",
                 documentId,
                 ex);
         }

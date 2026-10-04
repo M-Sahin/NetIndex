@@ -36,6 +36,16 @@ public sealed class FixedSizeChunkingStrategy : IChunkingStrategy
     /// <see cref="Task.FromResult{TResult}(TResult)"/> to satisfy the <see cref="IChunkingStrategy"/> interface.
     /// </remarks>
     public Task<IEnumerable<RagChunk>> ChunkAsync(string text, ChunkingOptions options, CancellationToken cancellationToken = default)
+        => ChunkCoreAsync(text, options, enforceSize: true, cancellationToken);
+
+    /// <summary>
+    /// Raw segmentation without the final size enforcement, so <see cref="RecursiveChunkingStrategy"/> can hand
+    /// oversized segments to its semantic stage first.
+    /// </summary>
+    internal Task<IEnumerable<RagChunk>> ChunkRawAsync(string text, ChunkingOptions options, CancellationToken cancellationToken = default)
+        => ChunkCoreAsync(text, options, enforceSize: false, cancellationToken);
+
+    private Task<IEnumerable<RagChunk>> ChunkCoreAsync(string text, ChunkingOptions options, bool enforceSize, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(text);
@@ -50,6 +60,8 @@ public sealed class FixedSizeChunkingStrategy : IChunkingStrategy
         {
             throw new ArgumentException("ChunkOverlap must be >= 0 and < ChunkSize.", nameof(options));
         }
+
+        ChunkSizeEnforcer.ValidateOptions(options);
 
         var maxChars = TokensToChars(options.ChunkSize);
         var overlapChars = TokensToChars(options.ChunkOverlap);
@@ -89,7 +101,8 @@ public sealed class FixedSizeChunkingStrategy : IChunkingStrategy
                 null));
         }
 
-        return Task.FromResult<IEnumerable<RagChunk>>(chunks);
+        return Task.FromResult<IEnumerable<RagChunk>>(
+            enforceSize ? ChunkSizeEnforcer.Enforce(chunks, maxChars, overlapChars, cancellationToken) : chunks);
     }
 
     private RagChunk CreateChunk(int index, StringBuilder currentChunk, int overlapChars)
