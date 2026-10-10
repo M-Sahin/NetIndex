@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text.Json;
@@ -33,7 +34,7 @@ public sealed class TeiDocumentReranker : IDocumentReranker, IDisposable
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(clock);
         _httpClient = httpClient;
-        _rerankUri = new Uri(options.Endpoint.TrimEnd('/') + "/rerank", UriKind.Absolute);
+        _rerankUri = new Uri(new Uri(options.Endpoint.TrimEnd('/') + "/", UriKind.Absolute), "rerank");
         Breaker = new TeiCircuitBreaker(options.FailureThreshold, options.BreakDuration, clock);
     }
 
@@ -43,8 +44,25 @@ public sealed class TeiDocumentReranker : IDocumentReranker, IDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
         var opt = options.Value;
-        var handler = new SocketsHttpHandler { ConnectTimeout = opt.ConnectTimeout };
-        return new HttpClient(handler, disposeHandler: true) { Timeout = opt.RequestTimeout };
+        return new HttpClient(CreateHandler(opt), disposeHandler: true) { Timeout = opt.RequestTimeout };
+    }
+
+    internal static SocketsHttpHandler CreateHandler(TeiRerankerOptions options)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            ConnectTimeout = options.ConnectTimeout,
+
+            // A 3xx from the sidecar must never replay the question and chunk text to another host.
+            AllowAutoRedirect = false,
+        };
+        if (options.RestrictToPrivateNetwork)
+        {
+            handler.ConnectCallback = (context, cancellationToken) =>
+                TeiPrivateNetworkGuard.ConnectAsync(context.DnsEndPoint, TeiPrivateNetworkGuard.ResolveAsync, cancellationToken);
+        }
+
+        return handler;
     }
 
     /// <inheritdoc />
@@ -65,37 +83,73 @@ public sealed class TeiDocumentReranker : IDocumentReranker, IDisposable
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!Breaker.TryAcquire())
+        if (!Breaker.TryAcquire(out var admission))
         {
             throw new TeiCircuitOpenException(
                 "The Text Embeddings Inference reranker circuit is open; no request was attempted.");
         }
 
         using var activity = NetIndexActivitySource.Source.StartActivity("Tei.Rerank");
+
+        // Every admitted call ends in exactly one of RecordSuccess, RecordFailure or Release.
+        var settled = false;
         try
         {
             var scores = await ScoreAsync(input, query, cancellationToken).ConfigureAwait(false);
-            Breaker.RecordSuccess();
-            return Order(input, scores);
+            var ordered = Order(input, scores);
+            settled = true;
+            Breaker.RecordSuccess(admission);
+            return ordered;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            Breaker.Release();
             throw;
         }
         catch (NetIndexProviderException ex)
         {
-            // A 4xx proves the service is reachable; only outage-type failures count towards the breaker.
+            Fail(activity, ex.ErrorCode);
+
+            // A 4xx proves the service is reachable; only outage-type failures count towards opening the circuit.
+            settled = true;
             if (ex.IsRetryable || ex.ErrorCode == "invalid_response")
             {
-                Breaker.RecordFailure();
+                Breaker.RecordFailure(admission);
             }
             else
             {
-                Breaker.RecordSuccess();
+                Breaker.RecordSuccess(admission);
             }
+
             throw;
         }
+        catch (Exception ex)
+        {
+            Fail(activity, "unexpected_failure");
+            settled = true;
+            Breaker.RecordFailure(admission);
+            throw new NetIndexProviderException(
+                "The Text Embeddings Inference reranker failed unexpectedly.",
+                isRetryable: false, providerName: ProviderName,
+                errorCode: "unexpected_failure", httpStatusCode: null, innerException: ex);
+        }
+        finally
+        {
+            if (!settled)
+            {
+                Breaker.Release(admission);
+            }
+        }
+    }
+
+    private static void Fail(Activity? activity, string? errorCode)
+    {
+        if (activity is null)
+        {
+            return;
+        }
+
+        activity.SetStatus(ActivityStatusCode.Error, errorCode);
+        activity.SetTag("error.type", errorCode);
     }
 
     private async Task<float[]> ScoreAsync(
@@ -112,7 +166,7 @@ public sealed class TeiDocumentReranker : IDocumentReranker, IDisposable
             }
 
             var items = await response.Content
-                .ReadFromJsonAsync<List<RerankItem>>(cancellationToken)
+                .ReadFromJsonAsync<List<RerankItem?>>(cancellationToken)
                 .ConfigureAwait(false);
             return MapScores(items, input.Count);
         }
@@ -127,17 +181,33 @@ public sealed class TeiDocumentReranker : IDocumentReranker, IDisposable
                 isRetryable: true, providerName: ProviderName,
                 errorCode: "timeout", httpStatusCode: null, innerException: ex);
         }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or InvalidOperationException)
         {
             throw InvalidResponse(ex);
         }
         catch (Exception ex) when (ex is HttpRequestException or SocketException or IOException)
         {
+            var refused = HasInner<TeiNonPrivateAddressException>(ex);
             throw new NetIndexProviderException(
-                "Unable to connect to the Text Embeddings Inference reranker.",
+                refused
+                    ? "The Text Embeddings Inference reranker host resolved to a non-private address; no request was sent."
+                    : "Unable to connect to the Text Embeddings Inference reranker.",
                 isRetryable: true, providerName: ProviderName,
-                errorCode: "connection_failed", httpStatusCode: null, innerException: ex);
+                errorCode: refused ? "non_private_address" : "connection_failed", httpStatusCode: null, innerException: ex);
         }
+    }
+
+    private static bool HasInner<T>(Exception ex)
+    {
+        for (Exception? current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is T)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static NetIndexProviderException InvalidResponse(Exception? inner)
@@ -161,7 +231,7 @@ public sealed class TeiDocumentReranker : IDocumentReranker, IDisposable
             errorCode: $"http_{code}", httpStatusCode: code, innerException: null);
     }
 
-    private static float[] MapScores(List<RerankItem>? items, int expected)
+    private static float[] MapScores(List<RerankItem?>? items, int expected)
     {
         if (items is null || items.Count != expected)
         {
@@ -171,7 +241,7 @@ public sealed class TeiDocumentReranker : IDocumentReranker, IDisposable
         var seen = new bool[expected];
         foreach (var item in items)
         {
-            if (item.Index < 0 || item.Index >= expected || seen[item.Index] || !float.IsFinite(item.Score))
+            if (item is null || item.Index < 0 || item.Index >= expected || seen[item.Index] || !float.IsFinite(item.Score))
             {
                 throw InvalidResponse(null);
             }

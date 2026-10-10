@@ -17,6 +17,10 @@ public sealed class TeiRerankerOptionsValidator : IValidateOptions<TeiRerankerOp
         {
             return ValidateOptionsResult.Fail("TeiRerankerOptions.Endpoint must be a valid absolute http(s) URI.");
         }
+        if (uri.Query.Length > 0 || uri.Fragment.Length > 0 || options.Endpoint.Contains('?', StringComparison.Ordinal) || options.Endpoint.Contains('#', StringComparison.Ordinal))
+        {
+            return ValidateOptionsResult.Fail("TeiRerankerOptions.Endpoint must not contain a query or fragment.");
+        }
         if (options.ConnectTimeout <= TimeSpan.Zero)
         {
             return ValidateOptionsResult.Fail("TeiRerankerOptions.ConnectTimeout must be positive.");
