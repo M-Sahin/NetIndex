@@ -149,7 +149,7 @@ public class DependencyGraphTests
     [Fact]
     public void Providers_ShouldNot_DependOn_AspNetCore()
     {
-        foreach (var provider in new[] { "NetIndex.Providers.OpenAI", "NetIndex.Providers.Ollama", "NetIndex.Providers.AzureOpenAI" })
+        foreach (var provider in new[] { "NetIndex.Providers.OpenAI", "NetIndex.Providers.Ollama", "NetIndex.Providers.AzureOpenAI", "NetIndex.Providers.TextEmbeddingsInference" })
         {
             AssertNoDependency(provider, "NetIndex.AspNetCore", $"{provider} should not depend on AspNetCore");
         }
@@ -158,7 +158,7 @@ public class DependencyGraphTests
     [Fact]
     public void Providers_ShouldNot_DependOn_Core()
     {
-        foreach (var provider in new[] { "NetIndex.Providers.OpenAI", "NetIndex.Providers.Ollama", "NetIndex.Providers.AzureOpenAI" })
+        foreach (var provider in new[] { "NetIndex.Providers.OpenAI", "NetIndex.Providers.Ollama", "NetIndex.Providers.AzureOpenAI", "NetIndex.Providers.TextEmbeddingsInference" })
         {
             AssertNoAssemblyReference(provider,
                 "NetIndex.Core",
@@ -169,7 +169,7 @@ public class DependencyGraphTests
     [Fact]
     public void Providers_ShouldNot_DependOn_Storage()
     {
-        foreach (var provider in new[] { "NetIndex.Providers.OpenAI", "NetIndex.Providers.Ollama", "NetIndex.Providers.AzureOpenAI" })
+        foreach (var provider in new[] { "NetIndex.Providers.OpenAI", "NetIndex.Providers.Ollama", "NetIndex.Providers.AzureOpenAI", "NetIndex.Providers.TextEmbeddingsInference" })
         {
             AssertNoDependency(provider, "NetIndex.Storage", $"{provider} should not depend on Storage");
         }
@@ -178,7 +178,7 @@ public class DependencyGraphTests
     [Fact]
     public void Providers_ShouldNot_DependOn_Ingestion()
     {
-        foreach (var provider in new[] { "NetIndex.Providers.OpenAI", "NetIndex.Providers.Ollama", "NetIndex.Providers.AzureOpenAI" })
+        foreach (var provider in new[] { "NetIndex.Providers.OpenAI", "NetIndex.Providers.Ollama", "NetIndex.Providers.AzureOpenAI", "NetIndex.Providers.TextEmbeddingsInference" })
         {
             AssertNoDependency(provider, "NetIndex.Ingestion", $"{provider} should not depend on Ingestion");
         }
@@ -315,7 +315,7 @@ public class DependencyGraphTests
         var assemblies = new[]
         {
             "NetIndex.Core.Abstractions", "NetIndex.Core", "NetIndex.AspNetCore",
-            "NetIndex.Providers.OpenAI", "NetIndex.Providers.Ollama", "NetIndex.Providers.AzureOpenAI",
+            "NetIndex.Providers.OpenAI", "NetIndex.Providers.Ollama", "NetIndex.Providers.AzureOpenAI", "NetIndex.Providers.TextEmbeddingsInference",
             "NetIndex.Storage.InMemory", "NetIndex.Storage.Sqlite", "NetIndex.Storage.Pgvector",
             "NetIndex.Ingestion.Pdf", "NetIndex.Ingestion.Docx", "NetIndex.Ingestion.Markdown",
             "NetIndex.Ingestion.Tesseract", "NetIndex.Ingestion"

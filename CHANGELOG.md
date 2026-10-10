@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core repository license changed to Apache-2.0.
 - Defined enterprise-only capabilities as commercial add-ons (RBAC, compliance auditing, managed hosting/UI, priority support).
 
+## [0.9.4] - 2026-10-10
+
+### Added
+
+- `NetIndex.Providers.TextEmbeddingsInference`: an `IDocumentReranker` over the Text Embeddings Inference `POST /rerank` API (`UseTeiReranker`). Results are reordered by the cross-encoder score (ties keep input order) and carry that score; zero or one result is returned without a call.
+- `TeiRerankerOptions`: `Endpoint`, `ConnectTimeout` (500 ms), `RequestTimeout` (5 s), `FailureThreshold` (3) and `BreakDuration` (30 s), validated at build.
+- A hand-written circuit breaker (closed, open, half-open). While open, calls throw a retryable `TeiCircuitOpenException` without any network attempt. Failures surface as `NetIndexProviderException`; no `HttpRequestException` leaks.
+
 ## [0.9.3] - 2026-10-04
 
 ### Fixed

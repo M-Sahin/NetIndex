@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../Core/NetIndex.Core.Abstractions/NetIndex.Core.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="NetIndex.Providers.TextEmbeddingsInference.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <Title>NetIndex Text Embeddings Inference Reranker</Title>
+    <Description>Cross-encoder reranker provider for NetIndex over the Text Embeddings Inference /rerank API, with a short connect timeout, a request timeout and a circuit breaker, for fully local reranking.</Description>
+    <PackageTags>rag;netindex;reranker;cross-encoder;text-embeddings-inference;tei;local</PackageTags>
+  </PropertyGroup>
+</Project>
