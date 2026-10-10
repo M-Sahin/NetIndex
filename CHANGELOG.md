@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core repository license changed to Apache-2.0.
 - Defined enterprise-only capabilities as commercial add-ons (RBAC, compliance auditing, managed hosting/UI, priority support).
 
+## [0.9.5] - 2026-10-10
+
+### Fixed
+
+- `NetIndex.Providers.TextEmbeddingsInference`: any unexpected exception, and a response with `null` items, is now wrapped as a `NetIndexProviderException` (`unexpected_failure` / `invalid_response`) that counts as a breaker failure. Every admitted call ends in exactly one of success, failure or release, so a failed half-open probe can no longer leave the circuit open forever.
+- The circuit breaker stamps each admission with a generation; outcomes from calls admitted before a state change are ignored (a late success no longer closes an open circuit, a late failure no longer frees the probe slot).
+- The rerank URI is built with `Uri` composition, and `TeiRerankerOptionsValidator` rejects an `Endpoint` with a query or fragment.
+- Redirects are no longer followed (`AllowAutoRedirect = false`): a 3xx surfaces as a non-retryable `http_3xx` instead of replaying the question and chunk text to another host.
+- The `Tei.Rerank` activity now records failures (`ActivityStatusCode.Error` with the error code).
+
+### Added
+
+- `TeiRerankerOptions.RestrictToPrivateNetwork` (default `false`): a connect-time guard that resolves the host and connects only to loopback, RFC 1918, IPv6 unique-local or link-local addresses; otherwise it refuses with a retryable `non_private_address` before any request is sent.
+
 ## [0.9.4] - 2026-10-10
 
 ### Added
