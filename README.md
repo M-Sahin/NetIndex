@@ -104,6 +104,7 @@ NetIndex.Core.Abstractions    — interfaces and contracts (zero external deps)
 NetIndex.Core                 — pipeline orchestration, builder, DI
 
 NetIndex.Providers.Ollama     — local LLM via OllamaSharp
+NetIndex.Providers.TextEmbeddingsInference — local cross-encoder reranker (TEI /rerank)
 NetIndex.Providers.OpenAI     — OpenAI embeddings + chat
 NetIndex.Providers.AzureOpenAI — Azure OpenAI with DefaultAzureCredential
 

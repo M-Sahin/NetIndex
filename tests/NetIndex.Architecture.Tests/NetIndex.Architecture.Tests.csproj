@@ -20,6 +20,7 @@
     <ProjectReference Include="../../src/Providers/NetIndex.Providers.Ollama/NetIndex.Providers.Ollama.csproj" />
     <ProjectReference Include="../../src/Providers/NetIndex.Providers.OpenAI/NetIndex.Providers.OpenAI.csproj" />
     <ProjectReference Include="../../src/Providers/NetIndex.Providers.AzureOpenAI/NetIndex.Providers.AzureOpenAI.csproj" />
+    <ProjectReference Include="../../src/Providers/NetIndex.Providers.TextEmbeddingsInference/NetIndex.Providers.TextEmbeddingsInference.csproj" />
     <ProjectReference Include="../../src/Storage/NetIndex.Storage.InMemory/NetIndex.Storage.InMemory.csproj" />
     <ProjectReference Include="../../src/Storage/NetIndex.Storage.Sqlite/NetIndex.Storage.Sqlite.csproj" />
     <ProjectReference Include="../../src/Storage/NetIndex.Storage.Pgvector/NetIndex.Storage.Pgvector.csproj" />
