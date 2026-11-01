@@ -23,6 +23,7 @@ public sealed class TelemetryAndExceptionSmokeTests
         Assert.Equal("netindex.embed", NetIndexSpanNames.Embed);
         Assert.Equal("netindex.retrieve", NetIndexSpanNames.Retrieve);
         Assert.Equal("netindex.generate", NetIndexSpanNames.Generate);
+        Assert.Equal("netindex.delete", NetIndexSpanNames.Delete);
 
         Assert.All(
             new[]
@@ -32,6 +33,7 @@ public sealed class TelemetryAndExceptionSmokeTests
                 NetIndexSpanNames.Embed,
                 NetIndexSpanNames.Retrieve,
                 NetIndexSpanNames.Generate,
+                NetIndexSpanNames.Delete,
             },
             spanName => Assert.False(string.IsNullOrWhiteSpace(spanName)));
     }

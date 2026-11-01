@@ -252,6 +252,84 @@ public sealed class SqliteVectorStore : IVectorStore, IAsyncDisposable
     }
 
     /// <inheritdoc />
+    public async Task DeleteDocumentAsync(string documentId, string tenantId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ThrowIfDisposed();
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            using var transaction = _connection.BeginTransaction();
+
+            // json_extract yields NULL for a missing tag and NULL = @tenant never matches.
+            var rowids = new List<long>();
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.Transaction = transaction;
+                cmd.CommandText = """
+                    SELECT rowid FROM rag_chunks
+                    WHERE document_id = @documentId
+                      AND json_extract(metadata_json, @tenantPath) = @tenant
+                    """;
+                cmd.Parameters.AddWithValue("@documentId", documentId);
+                cmd.Parameters.AddWithValue("@tenantPath", "$.\"" + RagChunkMetadata.TenantId + "\"");
+                cmd.Parameters.AddWithValue("@tenant", tenantId);
+                using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    rowids.Add(reader.GetInt64(0));
+                }
+            }
+
+            if (rowids.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var rowid in rowids)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                using var vecCmd = _connection.CreateCommand();
+                vecCmd.Transaction = transaction;
+                vecCmd.CommandText = "DELETE FROM rag_chunks_vec WHERE rowid = @rowid";
+                vecCmd.Parameters.AddWithValue("@rowid", rowid);
+                await vecCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+                using var metaCmd = _connection.CreateCommand();
+                metaCmd.Transaction = transaction;
+                metaCmd.CommandText = "DELETE FROM rag_chunks WHERE rowid = @rowid";
+                metaCmd.Parameters.AddWithValue("@rowid", rowid);
+                await metaCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            transaction.Commit();
+        }
+        catch (ObjectDisposedException) when (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(SqliteVectorStore));
+        }
+        catch (SqliteException ex)
+        {
+            throw new NetIndexStorageException(
+                $"SQLite delete failed: {ex.Message}",
+                "SqliteVectorStore",
+                "Delete",
+                documentId,
+                ex);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
     public async Task ReplaceDocumentAsync(
         string documentId,
         IEnumerable<RagChunk> chunks,

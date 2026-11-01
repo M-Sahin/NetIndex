@@ -45,9 +45,48 @@ public interface IVectorStore
     /// <summary>
     /// Deletes all chunks associated with a document.
     /// </summary>
+    /// <remarks>
+    /// This delete is NOT tenant-scoped and performs no authorization: it removes the id's chunks for every
+    /// tenant. Multi-tenant callers must use <see cref="DeleteDocumentAsync"/> (or
+    /// <see cref="INetIndexPipeline.DeleteAsync"/>, which authorizes first and calls it).
+    /// </remarks>
     /// <param name="documentId">The document identifier to remove.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task DeleteAsync(string documentId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes the chunks of a document that belong to <paramref name="tenantId"/>, and only those.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The tenant predicate is the chunk metadata <see cref="RagChunkMetadata.TenantId"/>, matched exactly.
+    /// A chunk with no tenant tag never matches. Chunks of the id owned by another tenant or by no tenant
+    /// are left untouched and the call returns normally; a missing id is also a no-op.
+    /// </para>
+    /// <para>
+    /// The built-in stores apply the delete atomically and serialize it with <see cref="ReplaceDocumentAsync"/>
+    /// of the same id. The default implementation FAILS CLOSED: it throws
+    /// <see cref="NetIndexConfigurationException"/> and deletes nothing, so a custom store can never silently
+    /// fall back to the unscoped <see cref="DeleteAsync"/>.
+    /// </para>
+    /// </remarks>
+    /// <param name="documentId">The document whose chunks are removed.</param>
+    /// <param name="tenantId">The tenant whose chunks are removed.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <exception cref="NetIndexConfigurationException">Thrown by the default implementation: the store does not implement tenant-scoped delete.</exception>
+    /// <exception cref="ArgumentException">Thrown by implementing stores when <paramref name="documentId"/> or
+    /// <paramref name="tenantId"/> is null, empty or whitespace (the default implementation validates nothing; it only throws
+    /// <see cref="NetIndexConfigurationException"/>).</exception>
+    Task DeleteDocumentAsync(
+        string documentId,
+        string tenantId,
+        CancellationToken cancellationToken = default) =>
+        throw new NetIndexConfigurationException(
+            $"{GetType().Name} does not implement IVectorStore.DeleteDocumentAsync. " +
+            "A vector store used for tenant-safe removal must implement it (atomic, tenant-scoped delete).",
+            nameof(DeleteDocumentAsync),
+            "An IVectorStore that overrides DeleteDocumentAsync",
+            GetType().FullName);
 
     /// <summary>
     /// The <see cref="NetIndexAuthorizationException.FailureReason"/> used when a replace would touch

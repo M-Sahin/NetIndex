@@ -196,6 +196,65 @@ public sealed class PgvectorVectorStore : IVectorStore, IAsyncDisposable
     }
 
     /// <inheritdoc />
+    public async Task DeleteDocumentAsync(string documentId, string tenantId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ThrowIfDisposed();
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+            // Same lock key as ReplaceDocumentAsync: a concurrent replace and delete of one id serialize.
+            await using (var lockCmd = connection.CreateCommand())
+            {
+                lockCmd.Transaction = transaction;
+                lockCmd.CommandText = "SELECT pg_advisory_xact_lock(hashtextextended(@documentId, 0))";
+                lockCmd.Parameters.AddWithValue("documentId", documentId);
+                await lockCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            // A NULL or missing tenant tag yields NULL = @tenant, which never matches.
+            await using (var deleteCmd = connection.CreateCommand())
+            {
+                deleteCmd.Transaction = transaction;
+                deleteCmd.CommandText = """
+                    DELETE FROM rag_chunks
+                    WHERE document_id = @documentId
+                      AND (metadata_json::jsonb ->> @tenantKey) = @tenant
+                    """;
+                deleteCmd.Parameters.AddWithValue("documentId", documentId);
+                deleteCmd.Parameters.AddWithValue("tenantKey", RagChunkMetadata.TenantId);
+                deleteCmd.Parameters.AddWithValue("tenant", tenantId);
+                await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (ObjectDisposedException) when (_disposeState != 0)
+        {
+            throw new ObjectDisposedException(nameof(PgvectorVectorStore));
+        }
+        catch (Exception ex)
+        {
+            throw WrapStorageException(ex, "Delete", documentId);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
     public async Task ReplaceDocumentAsync(
         string documentId,
         IEnumerable<RagChunk> chunks,

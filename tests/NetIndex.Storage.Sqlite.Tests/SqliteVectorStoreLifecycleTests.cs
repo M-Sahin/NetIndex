@@ -76,6 +76,19 @@ public class SqliteVectorStoreLifecycleTests
             .Where(ex => ex.ObjectName == nameof(SqliteVectorStore));
     }
 
+    /// <summary>DeleteDocumentAsync after Dispose throws ObjectDisposedException (Story 2.14).</summary>
+    [Fact]
+    public async Task DeleteDocumentAsync_AfterDispose_ThrowsObjectDisposedExceptionAsync()
+    {
+        var store = CreateStore();
+        await store.DisposeAsync();
+
+        var act = async () => await store.DeleteDocumentAsync("doc-1", "tenant-a");
+
+        await act.Should().ThrowAsync<ObjectDisposedException>()
+            .Where(ex => ex.ObjectName == nameof(SqliteVectorStore));
+    }
+
     /// <summary>QueryAsync after Dispose throws ObjectDisposedException on enumeration.</summary>
     [Fact]
     public async Task QueryAsync_AfterDispose_ThrowsObjectDisposedExceptionAsync()

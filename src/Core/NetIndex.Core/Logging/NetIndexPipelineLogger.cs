@@ -79,6 +79,43 @@ internal static class NetIndexPipelineLogger
         logger.Log(level, NetIndexLogEventIds.IngestFailed, state, exception, Formatter);
     }
 
+    // ── Delete ──
+
+    public static void LogDeleteSucceeded(
+        ILogger logger, long durationMs, string tenantId, string documentId)
+    {
+        if (!logger.IsEnabled(LogLevel.Information))
+        {
+            return;
+        }
+
+        var state = new List<KeyValuePair<string, object?>>
+        {
+            new(NetIndexLogFields.Operation, NetIndexLogOperations.Delete),
+            new(NetIndexLogFields.Status, NetIndexLogStatus.Succeeded),
+            new(NetIndexLogFields.DurationMs, durationMs),
+            new(NetIndexSpanTags.TenantId, tenantId),
+            new(NetIndexSpanTags.DocumentId, documentId),
+            new("{OriginalFormat}", "NetIndex delete {netindex.status} [{netindex.duration_ms}ms]"),
+        };
+        logger.Log(LogLevel.Information, NetIndexLogEventIds.DeleteSucceeded, state, null, Formatter);
+    }
+
+    public static void LogDeleteFailed(
+        ILogger logger, long durationMs, string? tenantId, Exception exception)
+    {
+        var isCancel = exception is OperationCanceledException;
+        var level = isCancel ? LogLevel.Information : LogLevel.Error;
+        var status = isCancel ? NetIndexLogStatus.Canceled : NetIndexLogStatus.Failed;
+        if (!logger.IsEnabled(level))
+        {
+            return;
+        }
+
+        var state = BuildFailureState(NetIndexLogOperations.Delete, status, durationMs, tenantId, exception);
+        logger.Log(level, NetIndexLogEventIds.DeleteFailed, state, exception, Formatter);
+    }
+
     // ── Query ──
 
     public static void LogQuerySucceeded(

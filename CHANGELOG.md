@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-11-01
+
+### Added
+
+- `INetIndexPipeline.DeleteAsync(documentId)`: tenant-safe document removal. It authorizes first through `ITenantResolver` (span `netindex.delete`, log events `DeleteSucceeded` 1004 / `DeleteFailed` 1104), rejects a blank id before any store call, and removes only the current tenant's chunks; a null or blank tenant from the resolver is denied (`BlankTenantId`). Another tenant's chunks, tenantless chunks and a missing id are a silent no-op, so deleting is idempotent and the delete itself reveals nothing about other tenants' ids. Document ids stay one global namespace, so hosts must still mint opaque, tenant-unique ids.
+- `IVectorStore.DeleteDocumentAsync(documentId, tenantId)`: atomic, tenant-scoped delete implemented by the in-memory (both), SQLite and pgvector stores; serialized with `ReplaceDocumentAsync` of the same id. The default implementation fails closed with `NetIndexConfigurationException`, so a custom store never silently falls back to the unscoped `DeleteAsync`. The unscoped `IVectorStore.DeleteAsync` is unchanged (its remarks now point to the tenant-safe path).
+- `INetIndexPipeline.DeleteAsync` has a fail-closed default implementation (`NetIndexConfigurationException`), so existing custom pipeline implementations and test doubles keep compiling unchanged.
+
 ### Changed
 
 - Adopted Open Core distribution strategy.

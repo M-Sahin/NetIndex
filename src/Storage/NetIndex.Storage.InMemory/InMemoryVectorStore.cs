@@ -107,6 +107,21 @@ public sealed class InMemoryVectorStore : IVectorStore
     }
 
     /// <inheritdoc />
+    public Task DeleteDocumentAsync(string documentId, string tenantId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_gate)
+        {
+            RemoveDocument(documentId, tenantId);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
     public Task ReplaceDocumentAsync(
         string documentId,
         IEnumerable<RagChunk> chunks,
@@ -163,10 +178,11 @@ public sealed class InMemoryVectorStore : IVectorStore
         return Task.CompletedTask;
     }
 
-    private void RemoveDocument(string documentId)
+    private void RemoveDocument(string documentId, string? onlyTenantId = null)
     {
         var keysToRemove = _chunks
-            .Where(e => string.Equals(e.Value.DocumentId, documentId, StringComparison.Ordinal))
+            .Where(e => string.Equals(e.Value.DocumentId, documentId, StringComparison.Ordinal)
+                && (onlyTenantId is null || HasTenant(e.Value, onlyTenantId)))
             .Select(e => e.Key)
             .ToArray();
 
@@ -174,6 +190,13 @@ public sealed class InMemoryVectorStore : IVectorStore
         {
             _chunks.Remove(key);
         }
+    }
+
+    private static bool HasTenant(RagChunk chunk, string tenantId)
+    {
+        string? chunkTenant = null;
+        chunk.Metadata?.TryGetValue(RagChunkMetadata.TenantId, out chunkTenant);
+        return string.Equals(chunkTenant, tenantId, StringComparison.Ordinal);
     }
 
     private void ValidateChunk(RagChunk chunk)

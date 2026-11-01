@@ -52,6 +52,19 @@ public sealed class ReplaceContractUnitTests
         Assert.Equal(0, store.Writes);
     }
 
+    [Fact]
+    public async Task DefaultDeleteDocument_FailsClosed_AndDeletesNothingAsync()
+    {
+        var store = new MinimalStore();
+        IVectorStore asInterface = store;
+
+        var exception = await Assert.ThrowsAsync<NetIndexConfigurationException>(
+            () => asInterface.DeleteDocumentAsync("d", "tenant-a"));
+
+        Assert.Contains("DeleteDocumentAsync", exception.Message);
+        Assert.Equal(0, store.Writes);
+    }
+
     private static (NetIndexPipeline Pipeline, IChunkingStrategy Strategy, IVectorStore Store) CreatePipeline(ChunkingOptions options)
     {
         var resolver = Substitute.For<ITenantResolver>();

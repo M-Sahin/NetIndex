@@ -70,6 +70,52 @@ public sealed class TenantIsolationSecurityTests
         Assert.Empty(results);
     }
 
+    // ── Story 2.14: tenant-safe delete through a real pipeline and a real store ──
+
+    [Fact]
+    public async Task DeleteAsync_OtherTenant_LeavesTheChunks_OwningTenant_RemovesThemAsync()
+    {
+        var store = new InMemoryVectorStore();
+        var vector = new float[384];
+        vector[0] = 1f;
+        await store.ReplaceDocumentAsync(
+            "d1",
+            Enumerable.Range(0, 2).Select(i => new RagChunk(
+                $"d1_chunk_{i}", $"text-{i}", vector, "d1",
+                new Dictionary<string, string> { [RagChunkMetadata.TenantId] = "tenant-a" })));
+
+        await RealPipeline(store, "tenant-b").DeleteAsync("d1");
+
+        var afterForeign = new List<SearchResult<RagChunk>>();
+        await foreach (var r in store.QueryAsync(vector, top: 10))
+        {
+            afterForeign.Add(r);
+        }
+
+        Assert.Equal(2, afterForeign.Count);
+
+        await RealPipeline(store, "tenant-a").DeleteAsync("d1");
+
+        var afterOwner = new List<SearchResult<RagChunk>>();
+        await foreach (var r in store.QueryAsync(vector, top: 10))
+        {
+            afterOwner.Add(r);
+        }
+
+        Assert.Empty(afterOwner);
+    }
+
+    private static NetIndexPipeline RealPipeline(IVectorStore store, string tenant)
+    {
+        var resolver = Substitute.For<ITenantResolver>();
+        resolver.ResolveTenantIdAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(tenant));
+        var embedder = Substitute.For<IEmbeddingGenerator>();
+        embedder.Dimensions.Returns(384);
+        return new NetIndexPipeline(
+            resolver, null, embedder, store, Substitute.For<IChatClient>(), null, null,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<NetIndexPipeline>.Instance, null);
+    }
+
     // ── AC-Core-2: ingest stamps the tenant tag ──
 
     [Fact]
