@@ -459,4 +459,117 @@ public abstract class VectorStoreContractSuite : IAsyncLifetime
         Assert.Equal(2, results.Count);
         Assert.All(results, r => Assert.Equal("tenant-a", r.Item.Metadata![RagChunkMetadata.TenantId]));
     }
+
+    private Task SeedAsync(string documentId, string? tenant, int count, string prefix = "")
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        return Store.ReplaceDocumentAsync(
+            documentId,
+            Enumerable.Range(0, count).Select(i => CreateTenantChunk($"{documentId}_chunk_{i}", documentId, vector, tenant) with { Text = $"{prefix}{i}" }),
+            CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task DeleteDocument_OwnDocument_RemovesEveryChunkAsync()
+    {
+        await SeedAsync("doc-d1", "tenant-a", 3);
+        await SeedAsync("doc-d2", "tenant-a", 2);
+
+        await Store.DeleteDocumentAsync("doc-d1", "tenant-a", CancellationToken.None);
+
+        Assert.Equal(new[] { "doc-d2_chunk_0", "doc-d2_chunk_1" }, await QueryIdsAsync());
+    }
+
+    [Fact]
+    public async Task DeleteDocument_ForeignTenant_IsASilentNoOpAsync()
+    {
+        await SeedAsync("doc-d3", "tenant-a", 3);
+
+        var exception = await Record.ExceptionAsync(() => Store.DeleteDocumentAsync("doc-d3", "tenant-b", CancellationToken.None));
+
+        Assert.Null(exception);
+        Assert.Equal(3, (await QueryIdsAsync()).Length);
+    }
+
+    [Fact]
+    public async Task DeleteDocument_MixedRows_RemovesOnlyTheCallersTenantAsync()
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        await SeedAsync("doc-d4", "tenant-a", 2);
+        // Tenantless and foreign rows of the same id can only exist via the unscoped upsert.
+        await Store.UpsertAsync(
+            new[]
+            {
+                CreateTenantChunk("doc-d4_orphan_0", "doc-d4", vector, null),
+                CreateTenantChunk("doc-d4_other_0", "doc-d4", vector, "tenant-b"),
+            },
+            CancellationToken.None);
+
+        await Store.DeleteDocumentAsync("doc-d4", "tenant-a", CancellationToken.None);
+
+        Assert.Equal(new[] { "doc-d4_orphan_0", "doc-d4_other_0" }, await QueryIdsAsync());
+    }
+
+    [Fact]
+    public async Task DeleteDocument_TenantlessRows_AreNeverMatchedAsync()
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        await Store.UpsertAsync(new[] { CreateTenantChunk("doc-d5_chunk_0", "doc-d5", vector, null) }, CancellationToken.None);
+
+        await Store.DeleteDocumentAsync("doc-d5", "tenant-a", CancellationToken.None);
+
+        Assert.Equal(new[] { "doc-d5_chunk_0" }, await QueryIdsAsync());
+    }
+
+    [Fact]
+    public async Task DeleteDocument_MissingAndRepeated_AreNoOpsAsync()
+    {
+        await SeedAsync("doc-d6", "tenant-a", 2);
+
+        await Store.DeleteDocumentAsync("doc-unknown", "tenant-a", CancellationToken.None);
+        await Store.DeleteDocumentAsync("doc-d6", "tenant-a", CancellationToken.None);
+        var second = await Record.ExceptionAsync(() => Store.DeleteDocumentAsync("doc-d6", "tenant-a", CancellationToken.None));
+
+        Assert.Null(second);
+        Assert.Empty(await QueryIdsAsync());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task DeleteDocument_BlankArguments_AreRejectedAsync(string blank)
+    {
+        await SeedAsync("doc-d7", "tenant-a", 1);
+
+        Assert.IsAssignableFrom<ArgumentException>(
+            await Record.ExceptionAsync(() => Store.DeleteDocumentAsync(blank, "tenant-a", CancellationToken.None)));
+        Assert.IsAssignableFrom<ArgumentException>(
+            await Record.ExceptionAsync(() => Store.DeleteDocumentAsync("doc-d7", blank, CancellationToken.None)));
+        Assert.Single(await QueryIdsAsync());
+    }
+
+    [Fact]
+    public async Task DeleteDocument_RacingReplace_EndsAsAllOfOneOrTheOtherAsync()
+    {
+        var vector = CreateVector(Store.Dimensions, 1f, 0f, 0f);
+        for (var round = 0; round < 15; round++)
+        {
+            await SeedAsync("doc-d8", "tenant-a", 5, "old");
+
+            var replace = Task.Run(() => Store.ReplaceDocumentAsync(
+                "doc-d8",
+                Enumerable.Range(0, 2).Select(i => CreateTenantChunk($"doc-d8_chunk_{i}", "doc-d8", vector, "tenant-a") with { Text = $"new{i}" }),
+                CancellationToken.None));
+            var delete = Task.Run(() => Store.DeleteDocumentAsync("doc-d8", "tenant-a", CancellationToken.None));
+            await Task.WhenAll(replace, delete);
+
+            var results = await ReadAllAsync(Store.QueryAsync(vector, top: 50, CancellationToken.None), CancellationToken.None);
+            var texts = results.Select(r => r.Item.Text).ToList();
+            var consistent = texts.Count == 0
+                || (texts.Count == 2 && texts.All(t => t.StartsWith("new", StringComparison.Ordinal)));
+            Assert.True(consistent, $"Round {round}: mixed end state [{string.Join(",", texts)}].");
+
+            await Store.DeleteDocumentAsync("doc-d8", "tenant-a", CancellationToken.None);
+        }
+    }
 }

@@ -29,4 +29,8 @@ public static class NetIndexSpanNames
     /// <summary>Span name for the LLM generation stage: <c>netindex.generate</c>.</summary>
     /// <remarks>Emitted by <c>NetIndex.Providers.*</c> packages during LLM completion.</remarks>
     public const string Generate = "netindex.generate";
+
+    /// <summary>Span name for the document removal stage: <c>netindex.delete</c>.</summary>
+    /// <remarks>Emitted by <c>NetIndexPipeline.DeleteAsync</c> in <c>NetIndex.Core</c>.</remarks>
+    public const string Delete = "netindex.delete";
 }

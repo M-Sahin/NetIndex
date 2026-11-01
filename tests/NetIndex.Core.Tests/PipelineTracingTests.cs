@@ -16,6 +16,7 @@ namespace NetIndex.Core.Tests;
 /// for all five RAG pipeline stages (Story 6.2).
 /// </summary>
 [Trait("Category", "PipelineContract")]
+[Collection(ActivityListenerCollection.NAME)]
 public sealed class PipelineTracingTests : IDisposable
 {
     private readonly ConcurrentBag<Activity> _stopped = new();

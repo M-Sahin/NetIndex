@@ -49,6 +49,9 @@ Then inject `INetIndexPipeline` and use it:
 // Ingest
 await pipeline.IngestAsync(document);
 
+// Remove a document (authorizes first; deletes only the current tenant's chunks)
+await pipeline.DeleteAsync(document.Id);
+
 // Semantic search
 await foreach (var result in pipeline.QueryAsync("how do I reset my password?"))
     Console.WriteLine($"[{result.Score:F3}] {result.Item.Content}");
@@ -133,7 +136,7 @@ builder.Services.AddOpenTelemetry()
         .AddOtlpExporter());
 ```
 
-Span names follow the `netindex.{stage}` convention: `netindex.ingest`, `netindex.query`, `netindex.generate`, `netindex.embed`, `netindex.store.upsert`, `netindex.store.query`.
+Span names follow the `netindex.{stage}` convention: `netindex.ingest`, `netindex.query`, `netindex.generate`, `netindex.delete`, `netindex.embed`, `netindex.store.upsert`, `netindex.store.query`.
 
 ## Testing
 

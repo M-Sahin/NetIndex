@@ -31,6 +31,7 @@ internal static class NetIndexLogOperations
     public const string Ingest = "ingest";
     public const string Query = "query";
     public const string Generate = "generate";
+    public const string Delete = "delete";
 }
 
 /// <summary>
@@ -41,7 +42,9 @@ internal static class NetIndexLogEventIds
     public static readonly EventId IngestSucceeded = new(1001, "IngestSucceeded");
     public static readonly EventId QuerySucceeded = new(1002, "QuerySucceeded");
     public static readonly EventId GenerateSucceeded = new(1003, "GenerateSucceeded");
+    public static readonly EventId DeleteSucceeded = new(1004, "DeleteSucceeded");
     public static readonly EventId IngestFailed = new(1101, "IngestFailed");
     public static readonly EventId QueryFailed = new(1102, "QueryFailed");
     public static readonly EventId GenerateFailed = new(1103, "GenerateFailed");
+    public static readonly EventId DeleteFailed = new(1104, "DeleteFailed");
 }

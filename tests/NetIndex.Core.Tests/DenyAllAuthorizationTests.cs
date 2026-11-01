@@ -40,6 +40,29 @@ public sealed class DenyAllAuthorizationTests
     }
 
     /// <summary>
+    /// Verifies that DeleteAsync is denied by default and never reaches the vector store.
+    /// </summary>
+    [Fact]
+    public async Task DeleteAsync_WithDenyAllResolver_ThrowsAuthorizationExceptionAndNeverCallsTheStoreAsync()
+    {
+        var services = new ServiceCollection();
+        var store = Substitute.For<IVectorStore>();
+        store.Dimensions.Returns(384);
+        services.AddSingleton<IVectorStore>(store);
+        services.AddNetIndex().Build();
+
+        using var provider = services.BuildServiceProvider();
+        var pipeline = provider.GetRequiredService<INetIndexPipeline>();
+
+        var exception = await Assert.ThrowsAsync<NetIndexAuthorizationException>(
+            () => pipeline.DeleteAsync("doc-1"));
+
+        Assert.Equal("NoTenantResolverConfigured", exception.FailureReason);
+        await store.DidNotReceiveWithAnyArgs().DeleteDocumentAsync(default!, default!, default);
+        await store.DidNotReceiveWithAnyArgs().DeleteAsync(default!, default);
+    }
+
+    /// <summary>
     /// Verifies that QueryAsync throws NetIndexAuthorizationException when a custom resolver that returns null is registered.
     /// </summary>
     [Fact]

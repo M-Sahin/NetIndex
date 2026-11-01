@@ -17,6 +17,7 @@ public sealed class VectorStoreContractSuiteSelfTests : VectorStoreContractSuite
     private sealed class ContractTestVectorStore : IVectorStore
     {
         private readonly List<RagChunk> _chunks = new();
+        private readonly object _gate = new();
 
         public ContractTestVectorStore(int dimensions)
         {
@@ -40,8 +41,11 @@ public sealed class VectorStoreContractSuiteSelfTests : VectorStoreContractSuite
                         chunk.Embedding?.Length);
                 }
 
-                _chunks.RemoveAll(existing => existing.Id == chunk.Id);
-                _chunks.Add(chunk);
+                lock (_gate)
+                {
+                    _chunks.RemoveAll(existing => existing.Id == chunk.Id);
+                    _chunks.Add(chunk);
+                }
             }
 
             return Task.CompletedTask;
@@ -54,7 +58,13 @@ public sealed class VectorStoreContractSuiteSelfTests : VectorStoreContractSuite
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var orderedResults = _chunks
+            RagChunk[] snapshot;
+            lock (_gate)
+            {
+                snapshot = _chunks.ToArray();
+            }
+
+            var orderedResults = snapshot
                 .Select(chunk => new SearchResult<RagChunk>(chunk, CosineSimilarity(queryVector, chunk.Embedding!), chunk.DocumentId))
                 .OrderByDescending(result => result.Score)
                 .Take(top)
@@ -71,7 +81,28 @@ public sealed class VectorStoreContractSuiteSelfTests : VectorStoreContractSuite
         public Task DeleteAsync(string documentId, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            _chunks.RemoveAll(chunk => string.Equals(chunk.DocumentId, documentId, StringComparison.Ordinal));
+            lock (_gate)
+            {
+                _chunks.RemoveAll(chunk => string.Equals(chunk.DocumentId, documentId, StringComparison.Ordinal));
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteDocumentAsync(string documentId, string tenantId, CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                _chunks.RemoveAll(chunk =>
+                    string.Equals(chunk.DocumentId, documentId, StringComparison.Ordinal)
+                    && chunk.Metadata is not null
+                    && chunk.Metadata.TryGetValue(RagChunkMetadata.TenantId, out var owner)
+                    && string.Equals(owner, tenantId, StringComparison.Ordinal));
+            }
+
             return Task.CompletedTask;
         }
 
@@ -91,38 +122,48 @@ public sealed class VectorStoreContractSuiteSelfTests : VectorStoreContractSuite
                 }
             }
 
-            foreach (var existing in _chunks.Where(c => c.DocumentId == documentId))
+            lock (_gate)
             {
-                string? existingTenant = null;
-                existing.Metadata?.TryGetValue(RagChunkMetadata.TenantId, out existingTenant);
-                if (!string.Equals(existingTenant, tenant, StringComparison.Ordinal))
+                foreach (var existing in _chunks.Where(c => c.DocumentId == documentId))
                 {
-                    throw IVectorStore.CrossTenantCollision(documentId, tenant);
+                    string? existingTenant = null;
+                    existing.Metadata?.TryGetValue(RagChunkMetadata.TenantId, out existingTenant);
+                    if (!string.Equals(existingTenant, tenant, StringComparison.Ordinal))
+                    {
+                        throw IVectorStore.CrossTenantCollision(documentId, tenant);
+                    }
                 }
+
+                foreach (var chunk in list)
+                {
+                    var owner = _chunks.FirstOrDefault(c => c.Id == chunk.Id);
+                    if (owner is null)
+                    {
+                        continue;
+                    }
+
+                    string? ownerTenant = null;
+                    owner.Metadata?.TryGetValue(RagChunkMetadata.TenantId, out ownerTenant);
+                    if (owner.DocumentId != documentId || !string.Equals(ownerTenant, tenant, StringComparison.Ordinal))
+                    {
+                        throw IVectorStore.CrossTenantCollision(documentId, tenant);
+                    }
+                }
+
+                _chunks.RemoveAll(c => c.DocumentId == documentId);
+                _chunks.AddRange(list);
             }
 
-            foreach (var chunk in list)
-            {
-                var owner = _chunks.FirstOrDefault(c => c.Id == chunk.Id);
-                if (owner is null)
-                {
-                    continue;
-                }
-
-                string? ownerTenant = null;
-                owner.Metadata?.TryGetValue(RagChunkMetadata.TenantId, out ownerTenant);
-                if (owner.DocumentId != documentId || !string.Equals(ownerTenant, tenant, StringComparison.Ordinal))
-                {
-                    throw IVectorStore.CrossTenantCollision(documentId, tenant);
-                }
-            }
-
-            _chunks.RemoveAll(c => c.DocumentId == documentId);
-            _chunks.AddRange(list);
             return Task.CompletedTask;
         }
 
-        public void Reset() => _chunks.Clear();
+        public void Reset()
+        {
+            lock (_gate)
+            {
+                _chunks.Clear();
+            }
+        }
 
         private static float CosineSimilarity(float[] left, float[] right)
         {

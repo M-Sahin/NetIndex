@@ -338,6 +338,79 @@ public sealed class NetIndexPipeline : INetIndexPipeline
     }
 
     /// <inheritdoc />
+    public async Task DeleteAsync(string documentId, CancellationToken cancellationToken = default)
+    {
+        var sw = Stopwatch.StartNew();
+        using var deleteActivity = NetIndexActivitySource.Source.StartActivity(NetIndexSpanNames.Delete, ActivityKind.Internal);
+        deleteActivity?.SetTag(NetIndexSpanTags.DocumentId, documentId);
+
+        string tenantId;
+        try
+        {
+            tenantId = await AuthorizeAsync(cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            MarkActivityError(deleteActivity, exception);
+            NetIndexPipelineLogger.LogDeleteFailed(_logger, sw.ElapsedMilliseconds, null, exception);
+            throw;
+        }
+
+        // A blank tenant from a custom resolver is a denial here, never a store argument error: the tenant-scoped
+        // delete must not run (or be reported as a provider fault) for a tenant that is not one.
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            var blankTenant = new NetIndexAuthorizationException(
+                "Tenant resolver returned a blank tenant id. Authorization denied.",
+                null, null, "BlankTenantId");
+            MarkActivityError(deleteActivity, blankTenant);
+            NetIndexPipelineLogger.LogDeleteFailed(_logger, sw.ElapsedMilliseconds, null, blankTenant);
+            throw blankTenant;
+        }
+
+        deleteActivity?.SetTag(NetIndexSpanTags.TenantId, tenantId);
+
+        if (string.IsNullOrWhiteSpace(documentId))
+        {
+            var blankId = new ArgumentException("Document id must not be null or whitespace.", nameof(documentId));
+            MarkActivityError(deleteActivity, blankId, "Blank document id");
+            NetIndexPipelineLogger.LogDeleteFailed(_logger, sw.ElapsedMilliseconds, tenantId, blankId);
+            throw blankId;
+        }
+
+        try
+        {
+            await _vectorStore.DeleteDocumentAsync(documentId, tenantId, cancellationToken);
+            NetIndexPipelineLogger.LogDeleteSucceeded(_logger, sw.ElapsedMilliseconds, tenantId, documentId);
+        }
+        catch (NetIndexException exception)
+        {
+            MarkActivityError(deleteActivity, exception, "NetIndex exception in delete");
+            NetIndexPipelineLogger.LogDeleteFailed(_logger, sw.ElapsedMilliseconds, tenantId, exception);
+            throw;
+        }
+        catch (OperationCanceledException exception)
+        {
+            MarkActivityError(deleteActivity, exception, "Delete cancelled");
+            NetIndexPipelineLogger.LogDeleteFailed(_logger, sw.ElapsedMilliseconds, tenantId, exception);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            MarkActivityError(deleteActivity, exception);
+            var wrapped = new NetIndexProviderException(
+                "Delete pipeline failed.",
+                exception is TimeoutException,
+                null,
+                "DeleteFailed",
+                null,
+                exception);
+            NetIndexPipelineLogger.LogDeleteFailed(_logger, sw.ElapsedMilliseconds, tenantId, wrapped);
+            throw wrapped;
+        }
+    }
+
+    /// <inheritdoc />
     public async IAsyncEnumerable<SearchResult<RagChunk>> QueryAsync(
         string query,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
